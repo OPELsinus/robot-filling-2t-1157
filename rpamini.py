@@ -1,12 +1,30 @@
-import ctypes
 import json
+import logging
 import os
+import re
+import shutil
+import smtplib
+import socket
+import subprocess
+import time
+import traceback
+import urllib.parse
 from contextlib import suppress
+from datetime import datetime
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from time import sleep
 from typing import Union, List
+from zipfile import ZipFile
 
 import psutil
+import pyautogui
+import pyperclip
+import requests
+
 from pywinauto import win32functions
 from pywinauto.controls.uiawrapper import UIAWrapper
 from pywinauto.timings import wait_until_passes, wait_until
@@ -19,12 +37,311 @@ from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.support.wait import WebDriverWait
 from win32api import GetMonitorInfo, MonitorFromPoint
+from win32api import GetUserNameEx, NameSamCompatible
 
-from config import process_list_path
-from tools import find_elements, kill_process_list
-if ctypes.windll.user32.GetKeyboardLayout(0) != 67699721:
-    __err__ = 'Смените раскладку на ENG'
-    raise Exception(__err__)
+process_list_path = Path.home().joinpath('AppData\\Local\\.rpa\\process_list.json')
+MONEY_FORMAT = '# ##0.00_-'
+
+
+# ? tested
+class ArgsFormatter(logging.Formatter):
+    def format(self, record):
+        if record.args:
+            record.msg = ' '.join([str(i) for i in [record.msg, *record.args]])
+            record.args = None
+        return super(ArgsFormatter, self).format(record)
+
+
+# ? tested
+class PostHandler(logging.Handler):
+    def __init__(self, url, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.url = url
+
+    def emit(self, record):
+        data = self.format(record)
+        with suppress(Exception):
+            requests.post(self.url, json=data, verify=False, timeout=5)
+
+        tg_chat_id = "-886391393"  # Magnum UGD
+        bot_api = "1605945749:AAGmdgqo1zwRQxxS_TXF9UTKtf6x6ArdZak"
+        send_telegram(data, tg_chat_id, bot_api)
+
+
+def send_telegram(data, tg_chat_id, bot_api):
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{bot_api}/sendMessage",
+                          json={'chat_id': tg_chat_id, 'text': str(data)}, verify=False, timeout=10)
+    except Exception:
+        print("failed to send request to telegram")
+
+
+def dir_clear(path: Path, dirs=False):
+    for path_ in list(path.iterdir()):
+        if path_.is_file():
+            path_.unlink()
+        elif path_.is_dir() and dirs:
+            path_.rmdir()
+
+
+# ? tested
+def init_logger(logger_name: str = None, level: int = None, logger_format: str = None, post_handler_url: str = None,
+                file_handler_path: Union[Path, str] = None) -> logging.Logger:
+    logger_name = logger_name or 'orchestrator'
+    level = level or logging.INFO
+    logger_format = logger_format or '%(asctime)s||%(levelname)s||%(message)s'
+    date_format = '%Y-%m-%d,%H:%M:%S'
+    backup_count = 50
+
+    logging.basicConfig(level=level, format=logger_format, datefmt=date_format)
+    logger = logging.getLogger(logger_name)
+    formatter = ArgsFormatter(logger_format, datefmt=date_format)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    console_handler.setLevel(level)
+    logger.addHandler(console_handler)
+
+    if post_handler_url:
+        post_handler = PostHandler(post_handler_url)
+        post_handler.setFormatter(formatter)
+        post_handler.setLevel(level)
+        logger.addHandler(post_handler)
+    if file_handler_path:
+        log_path = file_handler_path
+        log_path.parent.mkdir(exist_ok=True, parents=True)
+        file_handler = TimedRotatingFileHandler(log_path.__str__(), 'W3', 1, backup_count, "utf-8")
+        file_handler.setFormatter(formatter)
+        file_handler.setLevel(level)
+        logger.addHandler(file_handler)
+    logger.setLevel(level)
+    logger.propagate = False
+    return logger
+
+
+# ? tested
+def send_message_to_orc(*args, url: str, chat_id: str) -> None:
+    requests.post(url, data={'chat_id': chat_id, 'message': ' '.join([str(i) for i in args])}, verify=False)
+
+
+# ? tested
+def send_message_by_smtp(body, subject: str, url: str, to: Union[list, str], username: str, password: str = None,
+                         html: str = None, attachments: List[Union[Path, str]] = None) -> None:
+    with smtplib.SMTP(url, 25) as smtp:
+        smtp.ehlo()
+        smtp.starttls()
+        smtp.ehlo()
+        if password:
+            smtp.login(username, password)
+
+        msg = MIMEMultipart('alternative')
+        msg["From"] = username
+        msg["To"] = ';'.join(to) if type(to) is list else to
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, 'plain'))
+
+        if html:
+            msg.attach(MIMEText(html, 'html'))
+
+        if attachments and isinstance(attachments, list):
+            for each in attachments:
+                path = Path(each).resolve()
+                with open(path.__str__(), 'rb') as f:
+                    part = MIMEApplication(f.read(), Name=path.name)
+                    part['Content-Disposition'] = 'attachment; filename="%s"' % path.name
+                    msg.attach(part)
+
+        smtp.send_message(msg=msg)
+
+
+# ? tested
+def net_use(resource: Union[Path, str], username: str, password: str, delete_all=False):
+    if delete_all:
+        command = f'net use * /delete /y'
+        result = subprocess.run(command, shell=True, capture_output=True, encoding='cp866')
+        print('delete', ' '.join(str(result.stdout).split(sep=None)))
+
+    resource = str(resource)[:-1] if str(resource)[-1] == '\\' else str(resource)
+    command = rf'net use "{resource}" /user:{username} {password}'.replace(r'\\\\', r'\\')
+    result = subprocess.run(command, shell=True, capture_output=True, encoding='cp866')
+    if len(result.stderr):
+        print('net_use', resource, ' '.join(str(result.stdout).split(sep=None)))
+    if len(result.stdout):
+        print('net_use', resource, ' '.join(str(result.stdout).split(sep=None)))
+    sleep(1)
+
+
+# ? tested
+def json_read(path: Union[Path, str]) -> Union[dict, list]:
+    with open(str(path), 'r', encoding='utf-8') as fp:
+        data = json.load(fp)
+    return data
+
+
+# ? tested
+def json_write(path: Union[Path, str], data: Union[dict, list]) -> None:
+    with open(str(path), 'w', encoding='utf-8') as fp:
+        json.dump(data, fp, ensure_ascii=False)
+
+
+# ? tested
+def get_hostname() -> str:
+    return socket.gethostbyname(socket.gethostname())
+
+
+# ? tested
+def get_username() -> str:
+    return GetUserNameEx(NameSamCompatible)
+
+
+# ? tested
+def protect_path(value: str) -> str:
+    return re.sub(r'[<>:"/\\|?*]', '_', value)
+
+
+# ? tested
+def protect_url(value: str) -> str:
+    return urllib.parse.quote(value, safe='/:')
+
+
+# ? tested
+def check_file_downloaded(target: Union[Path, str], timeout: Union[int, float] = 60) -> Union[Path, None]:
+    start_time = datetime.now()
+    while True:
+        target = Path(target)
+        folder = target.parent
+        files = folder.glob(target.name)
+        for file_path in files:
+            if not any(temp in str(file_path) for temp in ['.crdownload', '~$']):
+                if file_path.is_file() and file_path.stat().st_size > 0:
+                    return file_path
+        if int((datetime.now() - start_time).seconds) > timeout:
+            return None
+        sleep(1)
+
+
+# ? tested
+def fix_excel_file_error(path: Union[Path, str]) -> Union[Path, None]:
+    try:
+        file_path = Path(path)
+        tmp_folder = file_path.parent.joinpath('__temp__')
+        with ZipFile(file_path.__str__()) as excel_container:
+            excel_container.extractall(tmp_folder)
+            excel_container.close()
+        wrong_file_path = os.path.join(tmp_folder.__str__(), 'xl', 'SharedStrings.xml')
+        correct_file_path = os.path.join(tmp_folder.__str__(), 'xl', 'sharedStrings.xml')
+        os.rename(wrong_file_path, correct_file_path)
+        file_path.unlink()
+        shutil.make_archive(file_path.__str__(), 'zip', tmp_folder)
+        os.rename(file_path.__str__() + '.zip', file_path.__str__())
+        shutil.rmtree(tmp_folder.__str__(), ignore_errors=True)
+    except Exception as e:
+        traceback.print_exc()
+        logging.warning(f"Error while trying to fix excel file: {e}")
+        return None
+    return file_path
+
+
+# ? tested
+def clipboard_set(value):
+    pyperclip.copy(value)
+
+
+# ? tested
+def clipboard_get(raise_err=False, empty=False):
+    result = pyperclip.paste()
+    if not len(result):
+        if raise_err:
+            raise Exception('Clipboard is empty')
+        else:
+            return None
+    if empty:
+        clipboard_set('')
+    return result
+
+
+# ? tested
+def hold_session() -> None:
+    with suppress(Exception):
+        pyautogui.press('volumedown')
+        pyautogui.press('volumeup')
+
+
+# ? tested
+def make_screenshot(path: Union[Path, str]) -> None:
+    pyautogui.screenshot(path.__str__())
+
+
+# ? tested
+def try_except_decorator(retry_cout=2, retry_delay=1):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            for _ in range(retry_cout):
+                try:
+                    result = func(*args, **kwargs)
+                    return result
+                except (Exception,):
+                    traceback.print_exc()
+                    sleep(retry_delay)
+            raise Exception('retry_cout <= 0')
+
+        return wrapper
+
+    return decorator
+
+
+# ? tested
+def find_elements(timeout=30, **selector):
+    from pywinauto.findwindows import find_elements
+    from pywinauto.controls.uiawrapper import UIAWrapper
+    from pywinauto.timings import wait_until_passes
+
+    selector['top_level_only'] = selector['top_level_only'] if 'top_level_only' in selector else False
+
+    def func():
+        all_elements = find_elements(backend="uia", **selector)
+        all_elements = [e for e in all_elements if e.control_type]
+        all_elements = [UIAWrapper(e) for e in all_elements]
+        if not len(all_elements):
+            raise Exception('not found')
+        return all_elements
+
+    return wait_until_passes(timeout, 0.05, func)
+
+
+# ? tested
+def kill_exe(pid: int):
+    process = psutil.Process(int(pid))
+    root = psutil.Process(int(os.getppid()))
+    if process.name() == root.name():
+        return
+    if process.is_running():
+        children_ = process.children(recursive=True)
+        for child_ in children_:
+            if child_.is_running():
+                child_.kill()
+    if process.is_running():
+        process.kill()
+
+
+# ? tested
+def kill_process_list():
+    if process_list_path.is_file():
+        with open(process_list_path.__str__(), 'r', encoding='utf-8') as pl_fp:
+            process_list = json.load(pl_fp)
+    else:
+        process_list = list()
+
+    username = get_username()
+    for proc in psutil.process_iter():
+        with suppress(Exception):
+            proc_name = proc.name()
+            if proc_name not in process_list:
+                continue
+            proc_username = proc.username()
+            if proc_username != username:
+                continue
+            kill_exe(proc.pid)
 
 
 # ? tested
@@ -196,7 +513,7 @@ class App:
                 keys = ''.join(str(v) if n else replace(str(v)) for n, v in enumerate(value))
             else:
                 keys = ''.join(str(v) for v in value)
-            self.element.type_keys(keys, pause=0.03, with_spaces=True, with_tabs=True, with_newlines=True,
+            self.element.type_keys(keys, pause=0.05, with_spaces=True, with_tabs=True, with_newlines=True,
                                    set_foreground=set_focus)
 
         # TODO TEST
@@ -496,10 +813,12 @@ class Web:
         def click(self, double=False, delay=0, scroll=False, page_load=False):
             sleep(delay)
             if scroll:
-                with suppress(Exception):
-                    self.scroll()
+                self.scroll()
             url = self.driver.current_url
-            ActionChains(self.driver).double_click(self.element).perform() if double else self.element.click()
+            if double:
+                ActionChains(self.driver).double_click(self.element).perform()
+            else:
+                self.element.click()
             if page_load:
                 self.page_load(url)
 
@@ -507,34 +826,30 @@ class Web:
         def get_attr(self, attr='text', delay=0, scroll=False):
             sleep(delay)
             if scroll:
-                with suppress(Exception):
-                    self.scroll()
+                self.scroll()
             return getattr(self.element, attr) if attr in ['tag_name', 'text'] else self.element.get_attribute(attr)
 
         # ? tested
         def set_attr(self, value=None, attr='value', delay=0, scroll=False):
             sleep(delay)
             if scroll:
-                with suppress(Exception):
-                    self.scroll()
+                self.scroll()
             self.driver.execute_script(f"arguments[0].{attr} = arguments[1]", self.element, value)
 
         # ? tested
-        def type_keys(self, *value, delay=0, scroll=False, clear=False):
+        def type_keys(self, *value, delay=0, scroll=True, clear=True):
             sleep(delay)
             if scroll:
-                with suppress(Exception):
-                    self.scroll()
+                self.scroll()
             if clear:
                 self.clear()
             self.element.send_keys(*value)
 
         # ? tested
-        def select(self, value=None, select_type='select_by_value', delay=0, scroll=False):
+        def select(self, value=None, select_type='select_by_value', delay=0, scroll=True):
             sleep(delay)
             if scroll:
-                with suppress(Exception):
-                    self.scroll()
+                self.scroll()
             select = Select(self.element)
             function = getattr(select, select_type)
             if value is None:
@@ -546,10 +861,12 @@ class Web:
                 return function(value)
 
         # TODO TEST
-        def find_elements(self, selector, timeout=60, by='xpath'):
+        def find_elements(self, selector, timeout=60, event=None, by='xpath'):
             selector = f'.{selector}' if selector[0] != '.' else selector
+            if event is None:
+                event = expected_conditions.presence_of_element_located
             if timeout:
-                self.wait_element(selector, timeout, by)
+                self.wait_element(selector, timeout, event, by)
             elements = self.element.find_elements(by, selector)
             selector = f'{self.selector}{selector[1:]}'
             elements = [Web.Element(element=element, selector=selector, by=by, driver=self.driver) for element in
@@ -557,18 +874,22 @@ class Web:
             return elements
 
         # TODO TEST
-        def find_element(self, selector, timeout=60, by='xpath'):
+        def find_element(self, selector, timeout=60, event=None, by='xpath'):
             selector = f'.{selector}' if selector[0] != '.' else selector
+            if event is None:
+                event = expected_conditions.presence_of_element_located
             if timeout:
-                self.wait_element(selector, timeout, by)
+                self.wait_element(selector, timeout, event, by)
             element = self.element.find_element(by, selector)
             selector = f'{self.selector}{selector[1:]}'
             element = Web.Element(element=element, selector=selector, by=by, driver=self.driver)
             return element
 
         # TODO TEST
-        def wait_element(self, selector, timeout=60, by='xpath', until=True):
+        def wait_element(self, selector, timeout=60, event=None, by='xpath', until=True):
             selector = f'.{selector}' if selector[0] != '.' else selector
+            if event is None:
+                event = expected_conditions.presence_of_element_located
 
             def find():
                 try:
@@ -679,6 +1000,33 @@ class Web:
         except (Exception,):
             return False
 
+    def execute_script(self, xpath, value):
+        self.driver.execute_script(f"""
+            var xpathExpression = "{xpath}";
+
+            var matchingElements = document.evaluate(xpathExpression, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+
+            for (let i = 0; i < matchingElements.snapshotLength; i++) {{
+              var targetElement = matchingElements.snapshotItem(i);
+
+              targetElement.innerHTML = "{value}";
+            }}
+        """)
+
+    def execute_script_click(self, js_path):
+        print(f"""
+                var button = document.querySelector('{js_path}');
+                if (button) {{
+                    button.click();
+                }}
+            """)
+        self.driver.execute_script(f"""
+                var button = document.querySelector('{js_path}');
+                if (button) {{
+                    button.click();
+                }}
+            """)
+
 
 # ? tested
 class BusinessException(Exception):
@@ -708,3 +1056,45 @@ class RobotException(Exception):
         self.message = message
         self.function_name = function_name
         self.data = data
+
+
+common_try_number = 2
+
+
+def try_except_decorator(func):
+    def wrapper(*args, **kwargs):
+        for i in range(common_try_number):
+            try:
+                start_time = time.time()
+                result = func(*args, **kwargs)
+                end_time = time.time()
+                print(f"Transaction took {end_time - start_time:.6f}s to execute")
+                return result
+
+            except BusinessException as bex:
+                print("This is Business Exception is decorator")
+                if bex.message == "Failed to log in":
+                    print("Failed to log in")
+
+                if bex.message == "Сертификат отозван":
+                    print("Сертификат отозван breaking")
+                    break
+            except Exception as ex:
+                print("This is Robot Exception ")
+                traceback.print_exc()
+
+                sleep(5)
+                print(ex)
+                if i > 1:
+                    break
+            print(f"Process try count: {i}")
+
+    return wrapper
+
+
+def msg_tg_through_orc(msg):
+    try:
+        msg = f"{msg.replace('_', ' ')}"
+        requests.post('https://rpa.magnum.kz/tg', data={'chat_id': '-939713300', 'message': msg}, verify=False)
+    except Exception as exc:
+        print("cannot send message to tg through orc")
