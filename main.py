@@ -7,6 +7,7 @@ from pywinauto import keyboard
 from config import logger
 from rpamini import Web, App
 
+
 if __name__ == '__main__':
 
     # logger.info('Started')
