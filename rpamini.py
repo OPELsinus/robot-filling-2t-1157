@@ -1000,18 +1000,32 @@ class Web:
         except (Exception,):
             return False
 
-    def execute_script(self, xpath, value):
-        self.driver.execute_script(f"""
-            var xpathExpression = "{xpath}";
+    def execute_script(self, xpath, element_type='innerHTML', value=None):
 
-            var matchingElements = document.evaluate(xpathExpression, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        if element_type == 'innerHTML':
+            self.driver.execute_script(f"""
+                var xpathExpression = "{xpath}";
+    
+                var matchingElements = document.evaluate(xpathExpression, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+    
+                for (let i = 0; i < matchingElements.snapshotLength; i++) {{
+                  var targetElement = matchingElements.snapshotItem(i);
+    
+                  targetElement.innerHTML = "{value}";
+                }}
+            """)
+        elif element_type == 'value':
+            self.driver.execute_script(f"""
+                    var xpathExpression = "{xpath}";
 
-            for (let i = 0; i < matchingElements.snapshotLength; i++) {{
-              var targetElement = matchingElements.snapshotItem(i);
+                    var matchingElements = document.evaluate(xpathExpression, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
 
-              targetElement.innerHTML = "{value}";
-            }}
-        """)
+                    for (let i = 0; i < matchingElements.snapshotLength; i++) {{
+                      var targetElement = matchingElements.snapshotItem(i);
+
+                      targetElement.value = "{value}";
+                    }}
+                """)
 
     def execute_script_click(self, js_path):
         print(f"""
@@ -1026,6 +1040,10 @@ class Web:
                     button.click();
                 }}
             """)
+
+    def execute_script_alert(self):
+
+        self.driver.execute_script("alert('kekus')")
 
 
 # ? tested

