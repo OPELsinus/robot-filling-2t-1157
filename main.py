@@ -1,15 +1,23 @@
 import datetime
+import os
 import random
+import shutil
 import sys
 import uuid
+from pathlib import Path
 from time import sleep
 
+import numpy as np
+import openpyxl
+import pandas as pd
+
 import psycopg2 as psycopg2
+from openpyxl import load_workbook
 from pywinauto import keyboard
 
-from config import logger, robot_name, db_host, db_port, db_name, db_user, db_pass
+from config import logger, robot_name, db_host, db_port, db_name, db_user, db_pass, owa_username, owa_password
 from rpamini import Web, App
-from tools import take_screenshot
+from tools import take_screenshot, update_credentials
 
 
 def sql_create_table():
@@ -81,32 +89,11 @@ def insert_data_in_db(started_time, store_id, store_name, status, error_reason, 
     conn.close()
 
 
-if __name__ == '__main__':
-    sql_create_table()
-    start = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")
-    sleep(10)
-    insert_data_in_db(start, 4, 'Алматинский филиал №1', 'success', '', '', '10s')
-    get_all_data()
-    exit()
-    # logger.info('Started')
-    #
+def start_one_branch(filepath):
     web = Web()
     web.run()
     web.get('https://cabinet.stat.gov.kz/')
-    # sleep(10)
-    # web.get('https://stat.gov.kz/')
-    #
-    # web.wait_element('/html/body/header/div/div[2]/ul/li[3]/a')
-    # web.find_element('/html/body/header/div/div[2]/ul/li[3]/a').click()
-    #
-    # web.wait_element('/html/body/div[4]/div/div/div[1]/a')
-    # web.find_element('/html/body/div[4]/div/div/div[1]/a').click()
-    #
-    # app = App('')
-    # el = app.find_element({"title": "Подтвердите действие на странице stat.gov.kz", "class_name": "", "control_type": "TitleBar", "visible_only": True, "enabled_only": True, "found_index": 0})
-    # parent = el.parent(2)
-    # parent.type_keys(app.keys.ENTER)
-    #
+
     web.wait_element('//*[@id="idLogin"]')
     web.find_element('//*[@id="idLogin"]').click()
 
@@ -119,10 +106,9 @@ if __name__ == '__main__':
     web.find_element('//*[@id="loginButton"]').click()
 
     app = App('')
-    # el__ = app.find_element({"title": "Имя файла:", "class_name": "Edit", "control_type": "Edit", "visible_only": True,
-    #                         "enabled_only": True, "found_index": 0})
 
     ecp_path = r'M:\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\Торговый зал АСФ №1\AUTH_RSA256_913dc2beca1b810e0b0d8bc6adf56c474219831a.p12'
+    # r'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП'
 
     app.wait_element({"title": "Открыть файл", "class_name": "SunAwtDialog", "control_type": "Window", "visible_only": True, "enabled_only": True, "found_index": 0})
 
@@ -200,3 +186,92 @@ if __name__ == '__main__':
         take_screenshot()
 
         sleep(100)
+
+
+def get_all_branches_with_codes():
+    import psycopg2
+    import csv
+    import pandas as pd
+
+    conn = psycopg2.connect(dbname='adb', host='172.16.10.22', port='5432',
+                            user='rpa_robot', password='Qaz123123+')
+
+    cur = conn.cursor(name='1583_first_part')
+
+    query = f"""
+        select db.id_sale_object, ds.store_name from dwh_data.dim_branches db
+    left join dwh_data.dim_store ds on db.id_sale_object = ds.sale_source_obj_id
+    where ds.store_name like '%Торговый%' and current_date between ds.datestart and ds.dateend
+    group by db.id_sale_object, ds.store_name
+    """
+
+    cur.execute(query)
+
+    print('Executed')
+
+    df1 = pd.DataFrame(cur.fetchall())
+    df1.columns = ['store_id', 'store_name']
+
+    cur.close()
+    conn.close()
+
+    return df1
+
+
+if __name__ == '__main__':
+    # sql_create_table()
+    # start = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")
+    # sleep(5)
+    # insert_data_in_db(start, 4, 'Алматинский филиал №1', 'success', '', '', '10s')
+
+    all_branches = []
+
+    counter = 2
+
+    df = pd.DataFrame(columns=['id', 'branch', 'data'])
+
+    for file in os.listdir(r'C:\Users\Abdykarim.D\Desktop\downloads'):
+
+        if file == '!result.xlsx':
+
+            book = load_workbook(os.path.join(r'C:\Users\Abdykarim.D\Desktop\downloads', file))
+            sheet = book.active
+
+            while sheet[f'A{counter}'].value is not None:
+                all_branches.append([sheet[f'A{counter}'].value, sheet[f'B{counter}'].value, [sheet[f'I{counter}'].value, sheet[f'I{counter + 1}'].value, sheet[f'I{counter + 2}'].value]])
+
+                row = pd.DataFrame({'id': sheet[f'A{counter}'].value, 'branch': sheet[f'B{counter}'].value, 'data': [[sheet[f'I{counter}'].value, sheet[f'I{counter + 1}'].value, sheet[f'I{counter + 2}'].value]]})
+
+                df = pd.concat([df, row], ignore_index=True)
+                counter += 3
+
+    # for i in all_branches:
+    #     print(i)
+    print(df.iloc[0])
+    df1 = get_all_branches_with_codes()
+
+    df['name'] = None
+
+    for i in range(len(df)):
+        df['name'].loc[i] = df1[df1['store_id'] == df['id'].iloc[i]]['store_name'].iloc[0]
+
+    # print(df)
+    # df.to_excel(r'C:\Users\Abdykarim.D\Desktop\loadfl.xlsx')
+
+    for i in df['name']:
+
+        ecp_path = fr'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{i}'
+        # update_credentials(Path(ecp_path), "Abdykarim.D@magnum.kz", "Фф123456+")
+        # for fole in os.listdir(ecp_path):
+        #     print(fole)
+        # print(ecp_path)
+
+        if os.path.exists(ecp_path) and os.path.isdir(ecp_path):
+            print('Yes')
+        else:
+            print('NOOOOOOOO!!!!', ecp_path)
+
+    # get_all_data()
+
+    # path = ''
+    # start_one_branch(path)

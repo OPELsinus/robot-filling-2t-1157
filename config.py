@@ -3,6 +3,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import keyboard
 import urllib3
 
 from tools import update_credentials, json_read, prevent_auto_lock, PostHandler
