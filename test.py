@@ -1,11 +1,6 @@
-import os
+from rpamini import App
 
-import pyautogui
-from pywinauto import keyboard
+app = App('')
 
-from config import working_path
-from tools import take_screenshot
+app.find_element({"title": "Открыть файл", "class_name": "SunAwtDialog", "control_type": "Window", "visible_only": True, "enabled_only": True, "found_index": 0}).click()
 
-scr = pyautogui.screenshot()
-screenshot_path = str(os.path.join(working_path, 'kekus.png'))
-scr.save(screenshot_path)

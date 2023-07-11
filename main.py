@@ -3,6 +3,7 @@ import os
 import random
 import shutil
 import sys
+import time
 import uuid
 from pathlib import Path
 from time import sleep
@@ -15,9 +16,10 @@ import psycopg2 as psycopg2
 from openpyxl import load_workbook
 from pywinauto import keyboard
 
-from config import logger, robot_name, db_host, db_port, db_name, db_user, db_pass, owa_username, owa_password
+from config import logger, robot_name, db_host, db_port, db_name, db_user, db_pass, owa_username, owa_password, working_path
 from rpamini import Web, App
-from tools import take_screenshot, update_credentials
+from tools import update_credentials
+from pyautogui import screenshot
 
 
 def sql_create_table():
@@ -74,22 +76,89 @@ def get_all_data():
 def insert_data_in_db(started_time, store_id, store_name, status, error_reason, error_saved_path, execution_time):
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
 
-    insert_query = f'''
+    query = f"""
         INSERT INTO ROBOT.{robot_name.replace("-", "_")} (id, started_time, ended_time, store_id, store_name, status, error_reason, error_saved_path, execution_time)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
-    '''
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (store_id) DO UPDATE
+        SET started_time = EXCLUDED.started_time,
+            ended_time = EXCLUDED.ended_time,
+            store_name = EXCLUDED.store_name,
+            status = EXCLUDED.status,
+            error_reason = EXCLUDED.error_reason,
+            error_saved_path = EXCLUDED.error_saved_path,
+            execution_time = EXCLUDED.execution_time;
+    """
+
+    values = (
+        str(uuid.uuid4()),
+        started_time,
+        datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"),
+        store_id,
+        store_name,
+        status,
+        error_reason,
+        error_saved_path,
+        execution_time
+    )
 
     cursor = conn.cursor()
-
-    data = (str(uuid.uuid4()), started_time, datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id, store_name, status, error_reason, error_saved_path, execution_time)
-    cursor.execute(insert_query, data)
+    cursor.execute(query, values)
     conn.commit()
 
     cursor.close()
     conn.close()
 
 
-def start_one_branch(filepath):
+def get_all_branches_with_codes():
+    import psycopg2
+    import pandas as pd
+
+    conn = psycopg2.connect(dbname='adb', host='172.16.10.22', port='5432',
+                            user='rpa_robot', password='Qaz123123+')
+
+    cur = conn.cursor(name='1583_first_part')
+
+    query = f"""
+        select db.id_sale_object, ds.source_store_id, ds.store_name from dwh_data.dim_branches db
+        left join dwh_data.dim_store ds on db.id_sale_object = ds.sale_source_obj_id
+        where ds.store_name like '%Торговый%' and current_date between ds.datestart and ds.dateend
+        group by db.id_sale_object, ds.source_store_id, ds.store_name
+        order by ds.source_store_id
+    """
+
+    cur.execute(query)
+
+    print('Executed')
+
+    df1 = pd.DataFrame(cur.fetchall())
+    df1.columns = ['branch_id', 'store_id', 'store_name']
+
+    cur.close()
+    conn.close()
+
+    return df1
+
+
+def sign_ecp(ecp):
+    app = App('')
+
+    app.wait_element({"title": "Открыть файл", "class_name": "SunAwtDialog", "control_type": "Window", "visible_only": True, "enabled_only": True, "found_index": 0})
+
+    keyboard.send_keys(ecp, pause=0.01, with_spaces=True)
+
+    keyboard.send_keys('{ENTER}')
+    app.wait_element({"title_re": "Формирование ЭЦП.*", "class_name": "SunAwtDialog", "control_type": "Window", "visible_only": True, "enabled_only": True, "found_index": 0})
+
+    keyboard.send_keys('Aa123456')
+    sleep(1.5)
+
+    keyboard.send_keys('{ENTER}')
+    sleep(1.5)
+
+    keyboard.send_keys('{ENTER}')
+
+
+def start_single_branch(filepath, store, values_first_part, values_second_part):
     web = Web()
     web.run()
     web.get('https://cabinet.stat.gov.kz/')
@@ -105,125 +174,136 @@ def start_one_branch(filepath):
 
     web.find_element('//*[@id="loginButton"]').click()
 
-    app = App('')
+    ecp_auth = ''
+    ecp_sign = ''
+    for files in os.listdir(filepath):
+        if 'AUTH' in files:
+            ecp_auth = os.path.join(filepath, files)
+        if 'GOST' in files:
+            ecp_sign = os.path.join(filepath, files)
 
-    ecp_path = r'M:\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\Торговый зал АСФ №1\AUTH_RSA256_913dc2beca1b810e0b0d8bc6adf56c474219831a.p12'
-    # r'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП'
+    sign_ecp(ecp_auth)
 
-    app.wait_element({"title": "Открыть файл", "class_name": "SunAwtDialog", "control_type": "Window", "visible_only": True, "enabled_only": True, "found_index": 0})
-
-    keyboard.send_keys(ecp_path, pause=0.01, with_spaces=True)
-
-    keyboard.send_keys('{ENTER}')
-    app.wait_element({"title": "Формирование ЭЦП в формате CMS", "class_name": "SunAwtDialog", "control_type": "Window", "visible_only": True, "enabled_only": True, "found_index": 0})
-
-    keyboard.send_keys('Aa123456')
-    sleep(1.5)
-    # web.find_element("//button[@type='button' and contains(text(), 'Ok')]").click()
-    keyboard.send_keys('{ENTER}')
-    sleep(1.5)
-    # web.find_element("//button[@type='button' and contains(text(), 'Ok')]").click()
-    keyboard.send_keys('{ENTER}')
     logged_in = web.wait_element('//*[@id="idLogout"]/a')
 
     if logged_in:
+        if web.find_element("//a[text() = 'Выйти']"):
 
-        sleep(0.5)
-        web.find_element('//*[@id="tab-1168-btnInnerEl"]').click()
-        sleep(0.5)
-        web.find_element('//*[@id="radio-1131-boxLabelEl"]').click()
-        sleep(0.5)
-        web.find_element('//*[@id="radio-1132-boxLabelEl"]').click()
-        sleep(0.5)
-        web.find_element("//div[contains(text(), '2-торговля')]").click()
+            print(web.wait_element('//*[@id="dontAgreeId-inputEl"]', timeout=5), end=' ')
+            print(web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5), end='==========\n')
 
-        sleep(0.5)
+            if web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5):
+                try:
+                    web.find_element("//span[contains(text(), 'Пройти позже')]").click()
+                except:
 
-        web.find_element('//*[@id="createReportId-btnIconEl"]').click()
+                    print('HUETA')
+                    sleep(200)
 
-        sleep(1)
-        web.driver.switch_to.window(web.driver.window_handles[-1])
-        sleep(1)
+            if web.wait_element('//*[@id="dontAgreeId-inputEl"]', timeout=5):
+                web.find_element('//*[@id="dontAgreeId-inputEl"]').click()
+                sleep(0.3)
+                web.find_element('//*[@id="saveId-btnIconEl"]').click()
+                sleep(1)
+                web.find_element('//*[@id="ext-gen1893"]').click()
+                web.find_element('//*[@id="boundlist-1327-listEl"]/ul/li').click()
+                # web.find_element('//*[@id="boundlist-1327-listEl"]/ul').select('Персональный компьютер')
+                sleep(1)
+                web.find_element('//*[@id="button-1326-btnIconEl"]').click()
+                print('Done lol')
+                sign_ecp(ecp_sign)
 
-        print('Here')
+                try:
+                    web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5)
+                    web.find_element("//span[contains(text(), 'Пройти позже')]").click()
+                except:
+                    pass
 
-        web.wait_element('//*[@id="td_select_period_level_1"]/span')
-        web.execute_script_click("#btn-opendata")
-        # web.find_element('//*[@id="btn-opendata"]').click()  # Открыть
-        sleep(10)
-        web.wait_element('//*[@id="sel_statcode_accord"]/div/p/b[1]')
-        web.execute_script_click("body > div:nth-child(16) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1) > span")
-        # web.find_element('/html/body/div[15]/div[11]/div/button[1]/span').click()  # Выбрать
+            web.wait_element('//*[@id="tab-1168-btnInnerEl"]')
+            web.find_element('//*[@id="tab-1168-btnInnerEl"]').click()
+            sleep(0.5)
+            web.wait_element('//*[@id="radio-1131-boxLabelEl"]')
+            web.find_element('//*[@id="radio-1131-boxLabelEl"]').click()
+            sleep(0.5)
+            web.find_element('//*[@id="radio-1132-boxLabelEl"]').click()  # ? УБРАТЬ В БОЮ
+            sleep(0.5)
+            if web.wait_element("//div[contains(text(), '2-торговля')]", timeout=5):
+                web.find_element("//div[contains(text(), '2-торговля')]").click()
+            else:
+                scr = screenshot()
+                scr_path = str(os.path.join(working_path, str(store + '.png')))
+                scr.save(scr_path)
 
-        web.wait_element('//*[@id="sel_rep_accord"]/h3[1]/a')
-        web.execute_script_click("body > div:nth-child(18) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1)")
-        # web.find_element('/html/body/div[17]/div[11]/div/button[1]/span').click()  # Открыть
+                web.close()
+                web.quit()
 
-        groups = ['Объем оптовой торговли',
-                  'Объем розничной торговли',
-                  'Товарные запасы на конец отчетного месяца',
-                  'Рис',
-                  'гречневая',
-                  'подсолнечн',
-                  'белокоч',
-                  'репчатый',
-                  'Морковь',
-                  'Картофель',
-                  'Сахар',
-                  'Соль']
+                return 'HUETA'
 
-        for ind, group in enumerate(groups):
-            if ind < 3:
-                web.execute_script(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", random.randint(100, 1000))
-            web.execute_script(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", random.randint(100, 1000))
+            sleep(0.5)
 
-        web.find_element('//*[@id="tabs-panel"]/ul/li[2]/a').click()
-        web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_0']", value='Қалдыбек Б.Ғ.')
-        web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_1']", value='87073332438')
-        web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_2']", value='87073332438')
-        web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_3']", value='KALDYBEK.B@magnum.kz')
+            web.find_element('//*[@id="createReportId-btnIconEl"]').click()
 
-        take_screenshot()
+            sleep(1)
+            web.driver.switch_to.window(web.driver.window_handles[-1])
 
-        sleep(100)
+            web.wait_element('//*[@id="td_select_period_level_1"]/span')
+            web.execute_script_click_js("#btn-opendata")
 
+            web.wait_element('//*[@id="sel_statcode_accord"]/div/p/b[1]')
+            web.execute_script_click_js("body > div:nth-child(16) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1) > span")
 
-def get_all_branches_with_codes():
-    import psycopg2
-    import csv
-    import pandas as pd
+            web.wait_element('//*[@id="sel_rep_accord"]/h3[1]/a')
+            web.execute_script_click_js("body > div:nth-child(18) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1)")
 
-    conn = psycopg2.connect(dbname='adb', host='172.16.10.22', port='5432',
-                            user='rpa_robot', password='Qaz123123+')
+            groups = ['Объем розничной торговли',
+                      'Товарные запасы на конец отчетного месяца',
+                      'Рис',
+                      'гречневая',
+                      'подсолнечн',
+                      'белокоч',
+                      'репчатый',
+                      'Морковь',
+                      'Картофель',
+                      'Сахар',
+                      'Соль']
 
-    cur = conn.cursor(name='1583_first_part')
+            web.wait_element("//a[contains(text(), 'Страница 1')]")
+            web.find_element("//a[contains(text(), 'Страница 1')]").click()
 
-    query = f"""
-        select db.id_sale_object, ds.store_name from dwh_data.dim_branches db
-    left join dwh_data.dim_store ds on db.id_sale_object = ds.sale_source_obj_id
-    where ds.store_name like '%Торговый%' and current_date between ds.datestart and ds.dateend
-    group by db.id_sale_object, ds.store_name
-    """
+            for ind, group in enumerate(groups):
 
-    cur.execute(query)
+                if group == 'Объем розничной торговли':
+                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[0]))
+                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(values_first_part[1]))
 
-    print('Executed')
+                elif group == 'Товарные запасы на конец отчетного месяца':
+                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[2]))
 
-    df1 = pd.DataFrame(cur.fetchall())
-    df1.columns = ['store_id', 'store_name']
+                else:
+                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(random.randint(100, 1000)))
 
-    cur.close()
-    conn.close()
+            sleep(30)
+            web.find_element("//a[contains(text(), 'Данные исполнителя')]").click()
+            web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_0']", value='Қалдыбек Б.Ғ.')
+            web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_1']", value='87073332438')
+            web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_2']", value='87073332438')
+            web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_3']", value='KALDYBEK.B@magnum.kz')
 
-    return df1
+            # web.execute_script_click_xpath("//span[text() = 'Сохранить']")
+            sleep(30)
+            web.close()
+            web.quit()
+
+            return 'success'
 
 
 if __name__ == '__main__':
     # sql_create_table()
     # start = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")
-    # sleep(5)
-    # insert_data_in_db(start, 4, 'Алматинский филиал №1', 'success', '', '', '10s')
-
+    # # sleep(5)
+    # # insert_data_in_db(start, 4, 'Алматинский филиал №1', 'success', '', '', '10s')
+    # insert_data_in_db(started_time=start, store_id=int(4), store_name='Торговый зал АФ №1', status='success', error_reason='No error', error_saved_path='', execution_time=str(10))
+    # exit()
     all_branches = []
 
     counter = 2
@@ -245,33 +325,31 @@ if __name__ == '__main__':
                 df = pd.concat([df, row], ignore_index=True)
                 counter += 3
 
-    # for i in all_branches:
-    #     print(i)
-    print(df.iloc[0])
     df1 = get_all_branches_with_codes()
 
     df['name'] = None
+    df['store_id'] = None
 
     for i in range(len(df)):
-        df['name'].loc[i] = df1[df1['store_id'] == df['id'].iloc[i]]['store_name'].iloc[0]
+        df['name'].loc[i] = df1[df1['branch_id'] == df['id'].iloc[i]]['store_name'].iloc[0]
+        df['store_id'].loc[i] = df1[df1['branch_id'] == df['id'].iloc[i]]['store_id'].iloc[0]
 
-    # print(df)
-    # df.to_excel(r'C:\Users\Abdykarim.D\Desktop\loadfl.xlsx')
+    for ind, branch in enumerate(df['name'].iloc[40:]):
 
-    for i in df['name']:
-
-        ecp_path = fr'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{i}'
-        # update_credentials(Path(ecp_path), "Abdykarim.D@magnum.kz", "Фф123456+")
-        # for fole in os.listdir(ecp_path):
-        #     print(fole)
-        # print(ecp_path)
+        ecp_path = fr'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{branch}'
 
         if os.path.exists(ecp_path) and os.path.isdir(ecp_path):
-            print('Yes')
-        else:
-            print('NOOOOOOOO!!!!', ecp_path)
+            start = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")
+            start_time = time.time()
+            if True:
+                print('Started', ind, branch)
+                status = start_single_branch(ecp_path, branch, df['data'].iloc[ind], '')
+                end_time = time.time()
+                if status != 'success':
+                    insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status=status, error_reason=status, error_saved_path='', execution_time=str(end_time - start_time))
+                else:
+                    insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status='success', error_reason='No error', error_saved_path='', execution_time=str(end_time - start_time))
+            # except:
+            #     end_time = time.time()
+            #     insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status='failed', error_reason='Error', error_saved_path='', execution_time=str(end_time - start_time))
 
-    # get_all_data()
-
-    # path = ''
-    # start_one_branch(path)
