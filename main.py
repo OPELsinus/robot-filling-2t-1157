@@ -16,7 +16,7 @@ import psycopg2 as psycopg2
 from openpyxl import load_workbook
 from pywinauto import keyboard
 
-from config import logger, robot_name, db_host, db_port, db_name, db_user, db_pass, owa_username, owa_password, working_path
+from config import logger, robot_name, db_host, db_port, db_name, db_user, db_pass, owa_username, owa_password, working_path, download_path
 from rpamini import Web, App
 from tools import update_credentials
 from pyautogui import screenshot
@@ -62,20 +62,21 @@ def get_all_data():
     table_create_query = f'''
             SELECT * FROM ROBOT.{robot_name.replace("-", "_")}
             '''
-    c = conn.cursor()
-    c.execute(table_create_query)
-    rows = c.fetchall()
+    cur = conn.cursor()
+    cur.execute(table_create_query)
 
-    for row in rows:
-        print(row)
+    df1 = pd.DataFrame(cur.fetchall())
+    df1.columns = ['id', 'started_time', 'ended_time', 'store_id', 'store_name', 'status', 'error_reason', 'error_saved_path', 'execution_time']
 
-    c.close()
+    cur.close()
     conn.close()
+
+    return df1
 
 
 def insert_data_in_db(started_time, store_id, store_name, status, error_reason, error_saved_path, execution_time):
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
-
+    print(store_id, store_name)
     query = f"""
         INSERT INTO ROBOT.{robot_name.replace("-", "_")} (id, started_time, ended_time, store_id, store_name, status, error_reason, error_saved_path, execution_time)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -142,12 +143,14 @@ def get_all_branches_with_codes():
 def sign_ecp(ecp):
     app = App('')
 
-    app.wait_element({"title": "Открыть файл", "class_name": "SunAwtDialog", "control_type": "Window", "visible_only": True, "enabled_only": True, "found_index": 0})
+    app.wait_element({"title": "Открыть файл", "class_name": "SunAwtDialog", "control_type": "Window",
+                      "visible_only": True, "enabled_only": True, "found_index": 0})
 
     keyboard.send_keys(ecp, pause=0.01, with_spaces=True)
 
     keyboard.send_keys('{ENTER}')
-    app.wait_element({"title_re": "Формирование ЭЦП.*", "class_name": "SunAwtDialog", "control_type": "Window", "visible_only": True, "enabled_only": True, "found_index": 0})
+    app.wait_element({"title_re": "Формирование ЭЦП.*", "class_name": "SunAwtDialog", "control_type": "Window",
+                      "visible_only": True, "enabled_only": True, "found_index": 0})
 
     keyboard.send_keys('Aa123456')
     sleep(1.5)
@@ -156,6 +159,14 @@ def sign_ecp(ecp):
     sleep(1.5)
 
     keyboard.send_keys('{ENTER}')
+
+
+def save_screenshot(store):
+    scr = screenshot()
+    scr_path = str(os.path.join(working_path, str(store + '.png')))
+    scr.save(scr_path)
+
+    return scr_path
 
 
 def start_single_branch(filepath, store, values_first_part, values_second_part):
@@ -196,9 +207,9 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                 try:
                     web.find_element("//span[contains(text(), 'Пройти позже')]").click()
                 except:
-
-                    print('HUETA')
-                    sleep(200)
+                    save_screenshot(store)
+                    # print('HUETA')
+                    # sleep(200)
 
             if web.wait_element('//*[@id="dontAgreeId-inputEl"]', timeout=5):
                 web.find_element('//*[@id="dontAgreeId-inputEl"]').click()
@@ -230,14 +241,12 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             if web.wait_element("//div[contains(text(), '2-торговля')]", timeout=5):
                 web.find_element("//div[contains(text(), '2-торговля')]").click()
             else:
-                scr = screenshot()
-                scr_path = str(os.path.join(working_path, str(store + '.png')))
-                scr.save(scr_path)
+                saved_path = save_screenshot(store)
 
                 web.close()
                 web.quit()
 
-                return 'HUETA'
+                return ['Нет 2-т', saved_path]
 
             sleep(0.5)
 
@@ -248,6 +257,15 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
             web.wait_element('//*[@id="td_select_period_level_1"]/span')
             web.execute_script_click_js("#btn-opendata")
+
+            if web.wait_element("//span[contains(text(), 'не найдено')]", timeout=5):
+
+                saved_path = save_screenshot(store)
+
+                web.close()
+                web.quit()
+
+                return ['Нет филиала', saved_path]
 
             web.wait_element('//*[@id="sel_statcode_accord"]/div/p/b[1]')
             web.execute_script_click_js("body > div:nth-child(16) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1) > span")
@@ -269,6 +287,9 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
             web.wait_element("//a[contains(text(), 'Страница 1')]")
             web.find_element("//a[contains(text(), 'Страница 1')]").click()
+            sleep(20)
+            web.find_element('//*[@id="rtime"]').select('2')
+            sleep(100)
 
             for ind, group in enumerate(groups):
 
@@ -282,7 +303,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                 else:
                     web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(random.randint(100, 1000)))
 
-            sleep(30)
+            # sleep(30)
             web.find_element("//a[contains(text(), 'Данные исполнителя')]").click()
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_0']", value='Қалдыбек Б.Ғ.')
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_1']", value='87073332438')
@@ -290,31 +311,31 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_3']", value='KALDYBEK.B@magnum.kz')
 
             # web.execute_script_click_xpath("//span[text() = 'Сохранить']")
-            sleep(30)
+            # sleep(30)
             web.close()
             web.quit()
 
-            return 'success'
+            return ['success', '']
 
 
 if __name__ == '__main__':
-    # sql_create_table()
+    sql_create_table()
     # start = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")
-    # # sleep(5)
-    # # insert_data_in_db(start, 4, 'Алматинский филиал №1', 'success', '', '', '10s')
-    # insert_data_in_db(started_time=start, store_id=int(4), store_name='Торговый зал АФ №1', status='success', error_reason='No error', error_saved_path='', execution_time=str(10))
+    # insert_data_in_db(started_time=start, store_id=2350, store_name='Loh', status='failed', error_reason='guano', error_saved_path='', execution_time='10s')
     # exit()
+    update_credentials(Path(r'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП'), owa_username, owa_password)
+
     all_branches = []
 
     counter = 2
 
     df = pd.DataFrame(columns=['id', 'branch', 'data'])
 
-    for file in os.listdir(r'C:\Users\Abdykarim.D\Desktop\downloads'):
+    for file in os.listdir(os.path.join(download_path, 'downloads1')):
 
         if file == '!result.xlsx':
 
-            book = load_workbook(os.path.join(r'C:\Users\Abdykarim.D\Desktop\downloads', file))
+            book = load_workbook(os.path.join(os.path.join(download_path, 'downloads1'), file))
             sheet = book.active
 
             while sheet[f'A{counter}'].value is not None:
@@ -334,22 +355,31 @@ if __name__ == '__main__':
         df['name'].loc[i] = df1[df1['branch_id'] == df['id'].iloc[i]]['store_name'].iloc[0]
         df['store_id'].loc[i] = df1[df1['branch_id'] == df['id'].iloc[i]]['store_id'].iloc[0]
 
-    for ind, branch in enumerate(df['name'].iloc[40:]):
+    # all_rows = get_all_data()
+
+    # all_bad_rows = all_rows[all_rows['status'] == 'success']
+
+    # print('Len:', len(all_bad_rows))
+
+    # for ind, branch in enumerate(all_bad_rows['store_name']):
+    for ind, branch in enumerate(df['name']):
+        # if branch != 'Торговый зал АФ №34':
+        #     continue
 
         ecp_path = fr'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{branch}'
 
         if os.path.exists(ecp_path) and os.path.isdir(ecp_path):
             start = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")
             start_time = time.time()
-            if True:
+            try:
                 print('Started', ind, branch)
-                status = start_single_branch(ecp_path, branch, df['data'].iloc[ind], '')
+                status, saved_path = start_single_branch(ecp_path, branch, df['data'].iloc[ind], '')
                 end_time = time.time()
                 if status != 'success':
-                    insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status=status, error_reason=status, error_saved_path='', execution_time=str(end_time - start_time))
+                    insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status='failed', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time))
                 else:
                     insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status='success', error_reason='No error', error_saved_path='', execution_time=str(end_time - start_time))
-            # except:
-            #     end_time = time.time()
-            #     insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status='failed', error_reason='Error', error_saved_path='', execution_time=str(end_time - start_time))
+            except:
+                end_time = time.time()
+                insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status='polomalsya', error_reason='Error', error_saved_path='', execution_time=str(end_time - start_time))
 

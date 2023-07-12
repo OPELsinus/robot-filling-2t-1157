@@ -76,6 +76,7 @@ db_pass = global_env_data['postgre_db_password']
 
 robot_name = "robot-filling-2t-1157"
 
+
 if ctypes.windll.user32.GetKeyboardLayout(0) != 67699721:
     __err__ = 'Смените раскладку на ENG'
     logger.exception(__err__)
