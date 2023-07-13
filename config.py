@@ -40,6 +40,7 @@ owa_password_compl = global_env_data['owa_password_compl']
 sed_username = global_env_data['sed_username']
 sed_password = global_env_data['sed_password']
 process_list_path = local_path.joinpath('process_list.json')
+tg_token = global_env_data['tg_token']
 
 basic_format = '%(asctime)s||%(levelname)s||%(message)s'
 date_format = '%Y-%m-%d,%H:%M:%S'
@@ -75,7 +76,6 @@ db_user = global_env_data['postgre_db_username']
 db_pass = global_env_data['postgre_db_password']
 
 robot_name = "robot-filling-2t-1157"
-
 
 if ctypes.windll.user32.GetKeyboardLayout(0) != 67699721:
     __err__ = 'Смените раскладку на ENG'

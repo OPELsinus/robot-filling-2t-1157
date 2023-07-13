@@ -1000,6 +1000,20 @@ class Web:
         except (Exception,):
             return False
 
+    def lolus(self, xpath):
+        return self.driver.find_element('xpath', xpath).value_of_css_property('display')
+
+    def kekus(self):
+
+        self.driver.execute_script("""
+            const xpath = '//*[@id="loadmask-1315"]';
+            const element = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            
+            const displayAttribute = element.style.display;
+            
+            console.log(displayAttribute);
+        """)
+
     def execute_script(self, xpath, element_type='innerHTML', value=None):
 
         if element_type == 'innerHTML':
