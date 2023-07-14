@@ -85,7 +85,25 @@ def prevent_auto_lock():
 def send_message_to_tg(bot_token, chat_id, message):
     import requests
 
-    r = requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={'chat_id': chat_id, 'text': message}, verify=False)
+    for i in range(3):
+        try:
+            requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={'chat_id': chat_id, 'text': message}, verify=False)
+            break
+        except:
+            time.sleep(1)
+            pass
+
+
+def send_file_to_tg(bot_token, chat_id, message, path):
+    import requests
+
+    for i in range(3):
+        try:
+            requests.post(f"https://api.telegram.org/bot{bot_token}/sendDocument", data={'chat_id': chat_id, 'caption': message}, files={'document': open(path, 'rb')}, verify=False)
+            break
+        except:
+            time.sleep(1)
+            pass
 
 
 def take_screenshot():
