@@ -206,24 +206,37 @@ def get_all_branches_with_codes():
 
 
 def sign_ecp(ecp):
+    logger.info('Started ECP')
     app = App('')
 
-    app.wait_element({"title": "Открыть файл", "class_name": "SunAwtDialog", "control_type": "Window",
-                      "visible_only": True, "enabled_only": True, "found_index": 0})
+    el = {"title": "Открыть файл", "class_name": "SunAwtDialog", "control_type": "Window",
+          "visible_only": True, "enabled_only": True, "found_index": 0, "parent": None}
 
-    keyboard.send_keys(ecp, pause=0.01, with_spaces=True)
+    if app.wait_element(el):
 
-    keyboard.send_keys('{ENTER}')
-    app.wait_element({"title_re": "Формирование ЭЦП.*", "class_name": "SunAwtDialog", "control_type": "Window",
-                      "visible_only": True, "enabled_only": True, "found_index": 0})
+        logger.info(ecp)
 
-    keyboard.send_keys('Aa123456')
-    sleep(1.5)
+        keyboard.send_keys(ecp.replace('(', '{(}').replace(')', '{)}'), pause=0.01, with_spaces=True)
+        sleep(0.05)
+        keyboard.send_keys('{ENTER}')
 
-    keyboard.send_keys('{ENTER}')
-    sleep(1.5)
+        app.wait_element({"title_re": "Формирование ЭЦП.*", "class_name": "SunAwtDialog", "control_type": "Window",
+                          "visible_only": True, "enabled_only": True, "found_index": 0, "parent": None})
 
-    keyboard.send_keys('{ENTER}')
+        keyboard.send_keys('Aa123456')
+        sleep(1.5)
+
+        keyboard.send_keys('{ENTER}')
+        sleep(1.5)
+
+        keyboard.send_keys('{ENTER}')
+
+    else:
+        logger.info('Quit mazafaka')
+        app.find_element({"title": "Закрыть", "class_name": "", "control_type": "Button",
+                          "visible_only": True, "enabled_only": True, "found_index": 0}).click()
+
+    # app.quit()
 
 
 def save_screenshot(store):
@@ -234,11 +247,28 @@ def save_screenshot(store):
     return scr_path
 
 
+def wait_loading(web, xpath):
+    print('Started loading')
+    ind = 0
+    element = ''
+    while True:
+        if ind == 0:
+            web.find_element(xpath).click()
+        elif web.lolus('//*[@id="loadmask-1315"]') == 'block':
+            element = 'block'
+        if element == 'block' and web.lolus('//*[@id="loadmask-1315"]') == 'none':
+            print('Loaded')
+            sleep(0.5)
+            break
+        ind = 1
+
+
 def start_single_branch(filepath, store, values_first_part, values_second_part):
+
     web = Web()
     web.run()
     web.get('https://cabinet.stat.gov.kz/')
-    logger.info('Check-2')
+    logger.info('Check-1')
     web.wait_element('//*[@id="idLogin"]')
     web.find_element('//*[@id="idLogin"]').click()
 
@@ -248,8 +278,10 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
     web.wait_element('//*[@id="lawAlertCheck"]')
     web.find_element('//*[@id="lawAlertCheck"]').click()
 
+    sleep(0.5)
     web.find_element('//*[@id="loginButton"]').click()
-    logger.info('Check-1')
+
+    logger.info('Check-2')
     ecp_auth = ''
     ecp_sign = ''
     for files in os.listdir(filepath):
@@ -258,6 +290,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
         if 'GOST' in files:
             ecp_sign = os.path.join(filepath, files)
 
+    sleep(1)
     sign_ecp(ecp_auth)
 
     logged_in = web.wait_element('//*[@id="idLogout"]/a')
@@ -283,7 +316,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                 sleep(1)
                 web.find_element('//*[@id="ext-gen1893"]').click()
                 web.find_element('//*[@id="boundlist-1327-listEl"]/ul/li').click()
-                # web.find_element('//*[@id="boundlist-1327-listEl"]/ul').select('Персональный компьютер')
+
                 sleep(1)
                 web.find_element('//*[@id="button-1326-btnIconEl"]').click()
                 print('Done lol')
@@ -298,16 +331,14 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             web.wait_element('//*[@id="tab-1168-btnInnerEl"]')
             web.find_element('//*[@id="tab-1168-btnInnerEl"]').click()
 
-            sleep(0.7)
+            # sleep(0.7)
 
             web.wait_element('//*[@id="radio-1131-boxLabelEl"]')
-            web.find_element('//*[@id="radio-1131-boxLabelEl"]').click()
-
-            sleep(2)
-
-            web.find_element('//*[@id="radio-1132-boxLabelEl"]').click()  # ? УБРАТЬ В БОЮ
-
-            sleep(3)
+            sleep(10)
+            wait_loading(web, '//*[@id="radio-1132-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
+            wait_loading(web, '//*[@id="radio-1131-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
+            wait_loading(web, '//*[@id="radio-1132-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
+            # web.find_element('//*[@id="radio-1132-boxLabelEl"]').click()
 
             if web.wait_element("//div[contains(text(), '2-торговля')]", timeout=5):
                 web.find_element("//div[contains(text(), '2-торговля')]").click()
@@ -458,7 +489,7 @@ if __name__ == '__main__':
     if status != 'success':
         all_rows = get_all_data()
 
-        all_bad_rows = all_rows[all_rows['status'] == 'polomalsya']
+        all_bad_rows = all_rows[all_rows['status'] != 'success']
 
         all_bad_rows['store_normal_name'] = None
         all_bad_rows = all_bad_rows.reset_index(inplace=False)
@@ -473,7 +504,7 @@ if __name__ == '__main__':
 
     for ind, branch in enumerate(df['name']):
 
-        # if branch != 'Торговый зал АСФ №8':
+        # if branch != 'Торговый зал АСФ №80':
         #     continue
 
         ecp_path = fr'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{branch}'
@@ -494,7 +525,12 @@ if __name__ == '__main__':
                 # print('===============\n\n')
                 logger.info(df[df['name'] == branch]['data'].iloc[0])
                 logger.info(dick)
-                status, saved_path = start_single_branch(ecp_path, branch, df[df['name'] == branch]['data'].iloc[0], dick)
+                try:
+                    status, saved_path = start_single_branch(ecp_path, branch, df[df['name'] == branch]['data'].iloc[0], dick)
+                except Exception as poebotnya:
+                    insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status='poebotnya', error_reason=poebotnya, error_saved_path='', execution_time=str(end_time - start_time))
+                    continue
+
                 end_time = time.time()
 
                 if status != 'success':
