@@ -256,11 +256,11 @@ def wait_loading(web, xpath):
             web.find_element(xpath).click()
         elif web.lolus('//*[@id="loadmask-1315"]') == 'block':
             element = 'block'
-        if element == 'block' and web.lolus('//*[@id="loadmask-1315"]') == 'none':
+        if (element == 'block' and web.lolus('//*[@id="loadmask-1315"]') == 'none') or (ind >= 1000 and element == ''):
             print('Loaded')
             sleep(0.5)
             break
-        ind = 1
+        ind += 1
 
 
 def start_single_branch(filepath, store, values_first_part, values_second_part):
@@ -299,7 +299,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
         if web.find_element("//a[text() = 'Выйти']"):
 
             print(web.wait_element('//*[@id="dontAgreeId-inputEl"]', timeout=5), end=' ')
-            print(web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5), end='==========\n')
+            print(web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5), end='\n==========\n')
 
             if web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5):
                 try:
@@ -325,6 +325,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                 try:
                     web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5)
                     web.find_element("//span[contains(text(), 'Пройти позже')]").click()
+
                 except:
                     pass
             logger.info('Check1')
@@ -334,7 +335,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             # sleep(0.7)
 
             web.wait_element('//*[@id="radio-1131-boxLabelEl"]')
-            sleep(10)
+            sleep(1)
             wait_loading(web, '//*[@id="radio-1132-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
             wait_loading(web, '//*[@id="radio-1131-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
             wait_loading(web, '//*[@id="radio-1132-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
@@ -426,6 +427,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_3']", value='KALDYBEK.B@magnum.kz')
 
             # web.execute_script_click_xpath("//span[text() = 'Сохранить']")
+            # print(store.replace('Торговый зал', '').replace(' ', '').replace('№', ''))
             # sleep(30)
             web.close()
             web.quit()
@@ -484,7 +486,7 @@ if __name__ == '__main__':
 
     # ? Execute only rows with exact status
 
-    status = 'success'
+    status = 'succ1ess'
 
     if status != 'success':
         all_rows = get_all_data()
