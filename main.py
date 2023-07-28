@@ -207,6 +207,9 @@ def get_all_branches_with_codes():
 
 def sign_ecp(ecp):
     logger.info('Started ECP')
+    print('Kek')
+    logger.info(f'KEY: {ecp}')
+    print('Kek1')
     app = App('')
 
     el = {"title": "Открыть файл", "class_name": "SunAwtDialog", "control_type": "Window",
@@ -336,9 +339,9 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
             web.wait_element('//*[@id="radio-1131-boxLabelEl"]')
             sleep(1)
-            wait_loading(web, '//*[@id="radio-1132-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
-            wait_loading(web, '//*[@id="radio-1131-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
-            wait_loading(web, '//*[@id="radio-1132-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
+            # wait_loading(web, '//*[@id="radio-1132-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
+            # wait_loading(web, '//*[@id="radio-1131-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
+            # wait_loading(web, '//*[@id="radio-1132-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
             # web.find_element('//*[@id="radio-1132-boxLabelEl"]').click()
 
             if web.wait_element("//div[contains(text(), '2-торговля')]", timeout=5):
@@ -363,6 +366,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             sleep(0.3)
 
             if web.lolus('/html/body/div[7]') == 'block':
+
                 web.find_element('/html/body/div[7]/div[11]/div/button[2]').click()
 
                 saved_path = save_screenshot(store)
@@ -530,6 +534,7 @@ if __name__ == '__main__':
                 try:
                     status, saved_path = start_single_branch(ecp_path, branch, df[df['name'] == branch]['data'].iloc[0], dick)
                 except Exception as poebotnya:
+                    end_time = time.time()
                     insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status='poebotnya', error_reason=poebotnya, error_saved_path='', execution_time=str(end_time - start_time))
                     continue
 

@@ -48,11 +48,11 @@ logging.basicConfig(level=logging.INFO, format=basic_format, datefmt=date_format
 logger_name = 'orchestrator'
 logger = logging.getLogger(logger_name)
 formatter = logging.Formatter(basic_format, datefmt=date_format)
-post_handler = PostHandler(f'{orc_host}/log')
+post_handler = PostHandler(f'{orc_host}:8443/log')
 post_handler.setFormatter(formatter)
 post_handler.setLevel(logging.INFO)
 logger.addHandler(post_handler)
-log_path = local_path.joinpath('.agent\\robot-statements\\logs.txt')
+log_path = local_path.joinpath('.agent\\robot-filling-2t-1157\\logs.txt')
 log_path.parent.mkdir(exist_ok=True, parents=True)
 file_handler = RotatingFileHandler(log_path.__str__(), maxBytes=1 * 1024 * 1024, backupCount=50, encoding="utf-8")
 file_handler.setFormatter(formatter)
@@ -67,6 +67,8 @@ working_path = root_path.joinpath('working_path')
 working_path.mkdir(exist_ok=True, parents=True)
 chat_id = config_data['chat_id']
 
+robot_name = 'robot-filling-2t-1157'
+
 db_host = global_env_data['postgre_ip']
 
 db_port = global_env_data['postgre_port']
@@ -74,8 +76,6 @@ db_name = global_env_data['postgre_db_name']
 db_schema = 'robot'
 db_user = global_env_data['postgre_db_username']
 db_pass = global_env_data['postgre_db_password']
-
-robot_name = "robot-filling-2t-1157"
 
 if ctypes.windll.user32.GetKeyboardLayout(0) != 67699721:
     __err__ = 'Смените раскладку на ENG'
