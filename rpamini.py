@@ -1000,6 +1000,9 @@ class Web:
         except (Exception,):
             return False
 
+    def refresh(self):
+        self.driver.refresh()
+
     def lolus(self, xpath):
         return self.driver.find_element('xpath', xpath).value_of_css_property('display')
 

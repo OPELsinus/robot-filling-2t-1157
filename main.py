@@ -121,6 +121,7 @@ def get_all_data():
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
     table_create_query = f'''
             SELECT * FROM ROBOT.{robot_name.replace("-", "_")}
+            order by started_time desc
             '''
     cur = conn.cursor()
     cur.execute(table_create_query)
@@ -135,19 +136,18 @@ def get_all_data():
 
 
 def insert_data_in_db(started_time, store_id, store_name, status, error_reason, error_saved_path, execution_time):
+    return 0
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
-    print(store_id, store_name)
-    query_delete = f"""
-        delete from ROBOT.{robot_name.replace("-", "_")} where store_id = {store_id}
-    """
-    query_delete1 = f"""
-        delete from ROBOT.{robot_name.replace("-", "_")} where store_name = {store_name}
-    """
 
+    print('Started inserting')
+    query_delete = f"""
+        delete from ROBOT.{robot_name.replace("-", "_")} where store_name = '{store_name}'
+    """
     query = f"""
         INSERT INTO ROBOT.{robot_name.replace("-", "_")} (started_time, ended_time, store_id, store_name, status, error_reason, error_saved_path, execution_time)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """
+    print('Inserting1')
 
     values = (
         started_time,
@@ -159,15 +159,27 @@ def insert_data_in_db(started_time, store_id, store_name, status, error_reason, 
         error_saved_path,
         execution_time
     )
+    print(values)
 
     cursor = conn.cursor()
 
+    cursor.execute(query_delete)
+    # conn.autocommit = True
+    print(1)
     try:
+        print(2)
         cursor.execute(query_delete)
-    except:
+    except Exception as e:
+        print('GOVNO', e)
         pass
+    print(3)
+    try:
+        print(4)
+        cursor.execute(query, values)
+    except Exception as e:
+        conn.rollback()
+        print(f"Error: {e}")
 
-    cursor.execute(query, values)
     conn.commit()
 
     cursor.close()
@@ -255,11 +267,12 @@ def wait_loading(web, xpath):
     ind = 0
     element = ''
     while True:
-        if ind == 0:
-            web.find_element(xpath).click()
-        elif web.lolus('//*[@id="loadmask-1315"]') == 'block':
-            element = 'block'
-        if (element == 'block' and web.lolus('//*[@id="loadmask-1315"]') == 'none') or (ind >= 1000 and element == ''):
+        # if ind == 0:
+        #     web.find_element(xpath).click()
+        print(web.lolus('//*[@id="loadmask-1315"]'))
+        if web.lolus('//*[@id="loadmask-1315"]') == '':
+            element = ''
+        if (element == '' and web.lolus('//*[@id="loadmask-1315"]') == 'none') or (ind >= 1000 and element == ''):
             print('Loaded')
             sleep(0.5)
             break
@@ -296,13 +309,13 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
     sleep(1)
     sign_ecp(ecp_auth)
 
-    logged_in = web.wait_element('//*[@id="idLogout"]/a', timeout=35)
+    logged_in = web.wait_element('//*[@id="idLogout"]/a', timeout=30)
 
     if logged_in:
         if web.find_element("//a[text() = 'Выйти']"):
 
-            print(web.wait_element('//*[@id="dontAgreeId-inputEl"]', timeout=5), end=' ')
-            print(web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5), end='\n==========\n')
+            # print(web.wait_element('//*[@id="dontAgreeId-inputEl"]', timeout=5), end=' ')
+            # print(web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5), end='\n==========\n')
 
             if web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5):
                 try:
@@ -338,21 +351,37 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             # sleep(0.7)
 
             web.wait_element('//*[@id="radio-1131-boxLabelEl"]')
+
+            if web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=1.5):
+                web.execute_script_click_xpath("//span[contains(text(), 'Пройти позже')]")
             sleep(1)
             # wait_loading(web, '//*[@id="radio-1132-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
             # wait_loading(web, '//*[@id="radio-1131-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
             # wait_loading(web, '//*[@id="radio-1132-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
             # # web.find_element('//*[@id="radio-1132-boxLabelEl"]').click()
             # sleep(10)
-            if web.wait_element("//div[contains(text(), '2-торговля')]", timeout=5):
-                web.find_element("//div[contains(text(), '2-торговля')]").click()
-            else:
-                saved_path = save_screenshot(store)
-                web.close()
-                web.quit()
+            for i in range(3):
+                # wait_loading(web, '//*[@id="loadmask-1315"]')
+                if web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=1.5):
+                    web.execute_script_click_xpath("//span[contains(text(), 'Пройти позже')]")
+                if web.wait_element("//div[contains(text(), '2-торговля')]", timeout=12):
+                    web.find_element("//div[contains(text(), '2-торговля')]").click()
+                else:
+                    if i < 2:
 
-                print('Return those shit')
-                return ['Нет 2-т', saved_path]
+                        if web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=.5):
+                            web.execute_script_click_xpath("//span[contains(text(), 'Пройти позже')]")
+                        web.find_element('//*[@id="radio-1133-boxLabelEl"]').click()
+                        wait_loading(web, '//*[@id="loadmask-1315"]')
+                        web.refresh()
+
+                    else:
+                        saved_path = save_screenshot(store)
+                        web.close()
+                        web.quit()
+
+                        print('Return those shit')
+                        return ['Нет 2-т', saved_path]
             logger.info('Check2')
             sleep(0.5)
 
@@ -380,6 +409,42 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             web.execute_script_click_js("body > div:nth-child(16) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1) > span")
 
             web.wait_element('//*[@id="sel_rep_accord"]/h3[1]/a')
+
+            # ? Send already filled forms
+            if web.wait_element('//*[@id="sel_rep_accord"]/h3[2]/a', timeout=1):
+                web.execute_script_click_xpath("//*[@id='sel_rep_accord']/h3[2]/a")
+
+                web.execute_script_click_js("body > div:nth-child(18) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1)")
+
+                web.wait_element("//a[contains(text(), 'Страница 1')]")
+
+                web.execute_script_click_xpath("//span[text() = 'Отправить']")
+                print('Clicked Send')
+                web.wait_element("//input[@value = 'Персональный компьютер']", timeout=30)
+                web.execute_script_click_xpath("//input[@value = 'Персональный компьютер']")
+
+                sign_ecp(ecp_sign)
+                # sleep(1000)
+                # print(store.replace('Торговый зал', '').replace(' ', '').replace('№', ''))
+                # sleep(30)
+
+                found = False
+                while True:
+                    for file in os.listdir(download_path):
+                        if '.jpg' in file and 'crdownload' not in file:
+                            shutil.move(os.path.join(download_path, file), os.path.join(os.path.join(download_path, 'Отчёты 2т'), branch + '_1.jpg'))
+                            print(file)
+                            found = True
+                            break
+                    if found:
+                        break
+
+                web.close()
+                web.quit()
+
+                print('Successed')
+                return ['success', '']
+
             web.execute_script_click_js("body > div:nth-child(18) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1)")
 
             groups = ['Объем розничной торговли',
@@ -451,7 +516,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             while True:
                 for file in os.listdir(download_path):
                     if '.jpg' in file and 'crdownload' not in file:
-                        shutil.copy(os.path.join(download_path, file), os.path.join(os.path.join(download_path, 'Отчёты 2т'), branch))
+                        shutil.move(os.path.join(download_path, file), os.path.join(os.path.join(download_path, 'Отчёты 2т'), branch))
                         print(file)
                         found = True
                         break
@@ -482,6 +547,8 @@ def get_data_from_1157(branch):
 
 if __name__ == '__main__':
 
+    create_and_send_final_report()
+    exit()
     sql_create_table()
     # start = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")
     # insert_data_in_db(started_time=start, store_id=2350, store_name='Loh', status='failed', error_reason='guano', error_saved_path='', execution_time='10s')
@@ -501,8 +568,8 @@ if __name__ == '__main__':
 
             book = load_workbook(os.path.join(download_path, file))
             sheet = book.active
-            month = datetime.datetime.today().month
-
+            # month = datetime.datetime.today().month
+            month = 7
             months = 'DEFGHIJKLMNO'
             print('MON:', month, months[month - 1])
             while sheet[f'A{counter}'].value is not None:
@@ -537,7 +604,7 @@ if __name__ == '__main__':
     # if status != 'success':
     #     all_rows = get_all_data()
     #
-    #     all_bad_rows = all_rows[all_rows['status'] != 'success']
+    #     all_bad_rows = all_rows[all_rows['statxus'] != 'success']
     #
     #     all_bad_rows['store_normal_name'] = None
     #     all_bad_rows = all_bad_rows.reset_index(inplace=False)
@@ -550,12 +617,19 @@ if __name__ == '__main__':
 
     print('Len:', len(df))
     check = False
-    for ind, branch in enumerate(df['name']):
-
+    for ind, branch in enumerate(np.asarray(df['name'])[2:]):
+        if branch not in ['Торговый зал АСФ №11', 'Торговый зал АСФ №14', 'Торговый зал АСФ №15',
+                          'Торговый зал АСФ №17', 'Торговый зал АСФ №19', 'Торговый зал АСФ №2',
+                          'Торговый зал АСФ №21', 'Торговый зал АСФ №25', 'Торговый зал АСФ №26', 'Торговый зал АСФ №4', 'Торговый зал АСФ №40',
+                          'Торговый зал АСФ №55', 'Торговый зал АСФ №6', 'Торговый зал АСФ №62', 'Торговый зал АСФ №64', 'Торговый зал АСФ №65', 'Торговый зал АСФ №7', 'Торговый зал АСФ №72', 'Торговый зал АСФ №8', 'Торговый зал АСФ №9', 'Торговый зал АФ №10', 'Торговый зал АФ №12', 'Торговый зал АФ №14', 'Торговый зал АФ №15', 'Торговый зал АФ №16', 'Торговый зал АФ №17', 'Торговый зал АФ №2', 'Торговый зал АФ №20', 'Торговый зал АФ №22', 'Торговый зал АФ №24', 'Торговый зал АФ №26', 'Торговый зал АФ №28', 'Торговый зал АФ №29', 'Торговый зал АФ №30', 'Торговый зал АФ №31', 'Торговый зал АФ №33', 'Торговый зал АФ №35', 'Торговый зал АФ №38', 'Торговый зал АФ №39', 'Торговый зал АФ №4',
+                          'Торговый зал АФ №40', 'Торговый зал АФ №41', 'Торговый зал АФ №42', 'Торговый зал АФ №45', 'Торговый зал АФ №48', 'Торговый зал АФ №50', 'Торговый зал АФ №52', 'Торговый зал АФ №53', 'Торговый зал АФ №6', 'Торговый зал АФ №9', 'Торговый зал КЗФ №1', 'Торговый зал КФ №2', 'Торговый зал КФ №4', 'Торговый зал ППФ №1', 'Торговый зал ППФ №16', 'Торговый зал ППФ №4', 'Торговый зал ППФ №8', 'Торговый зал ТЗФ №1', 'Торговый зал ТКФ №1', 'Торговый зал ТФ №1', 'Торговый зал ТФ №2', 'Торговый зал ТФ №3', 'Торговый зал ТФ №4', 'Торговый зал ФКС №1', 'Торговый зал ШФ №1', 'Торговый зал ШФ №15', 'Торговый зал ШФ №2', 'Торговый зал ШФ №23', 'Торговый зал ШФ №3', 'Торговый зал ШФ №30', 'Торговый зал ШФ №7', 'Торговый зал ШФ №9']:
+            continue
         # if branch == 'Торговый зал АСФ №6':
         #     continue
-
-        if branch == 'Торговый зал АСФ №69':
+        # stores = ['Торговый зал АСФ №35', 'Торговый зал АФ №23', 'Торговый зал АФ №19', 'Торговый зал УКФ №1', 'Торговый зал АФ №5']
+        # if branch not in stores:
+        #     continue
+        if branch == 'Торговый зал КЗФ №1':
             check = True
         if not check:
             print(branch)
