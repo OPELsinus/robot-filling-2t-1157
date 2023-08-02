@@ -30,6 +30,7 @@ from openpyxl.styles import Side, Border, Font
 from pywinauto.timings import wait_until_passes
 from win32gui import GetCursorPos
 
+
 NUMBER_FORMAT = '# ##0.00_-'
 
 

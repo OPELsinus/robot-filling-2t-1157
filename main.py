@@ -35,52 +35,30 @@ dick1 = {'РИС ВЕС': 'Рис',
          'САХАР ПЕСОК': 'Сахар',
          'СОЛЬ ОБЫЧНАЯ': 'Соль'}
 
+groups = ['Объем розничной торговли',
+          'Товарные запасы на конец отчетного месяца',
+          'Рис',
+          'гречневая',
+          'подсолнечн',
+          'белокоч',
+          'репчатый',
+          'Морковь',
+          'Картофель',
+          'Сахар',
+          'Соль']
 
-def create_and_send_final_report():
 
-    if __name__ == '__main__':
+def drop_table():
+    conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
+    table_create_query = f'''
+            drop table robot.{robot_name.replace("-", "_")}
+            '''
+    c = conn.cursor()
+    c.execute(table_create_query)
 
-        df = get_all_data()
-
-        df[df.columns[-1]] = df[df.columns[-1]].astype(float)
-        df[df.columns[-1]] = df[df.columns[-1]].round()
-
-        df.columns = ['Время начала', 'Время окончания', 'Номер филиала', 'Название филиала', 'Статус', 'Причина ошибки', 'Пусть сохранения скриншота', 'Время исполнения (сек)']
-
-        df.to_excel('result.xlsx', index=False)
-
-        workbook = load_workbook('result.xlsx')
-        sheet = workbook.active
-
-        red_fill = PatternFill(start_color="FFA864", end_color="FFA864", fill_type="solid")
-        green_fill = PatternFill(start_color="A6FF64", end_color="A6FF64", fill_type="solid")
-
-        for cell in sheet['E']:
-            if cell.value == 'failed':
-                cell.fill = red_fill
-            if cell.value == 'success':
-                cell.fill = green_fill
-
-        for col in 'ABCDGH':
-
-            max_length = max(len(str(cell.value)) for cell in sheet[col])
-
-            if col == 'A' or col == 'B':
-                max_length -= 3
-            if col == 'D':
-                max_length += 5
-            if col == 'A':
-                max_length -= 3
-
-            sheet.column_dimensions[col].width = max_length
-
-        for col in 'ABCDGEFGH':
-            for cell in sheet[col]:
-                cell.alignment = Alignment(horizontal='center')
-
-        workbook.save('result.xlsx')
-
-        send_file_to_tg(tg_token, chat_id, 'Дросте', 'result.xlsx')
+    conn.commit()
+    c.close()
+    conn.close()
 
 
 def sql_create_table():
@@ -135,11 +113,33 @@ def get_all_data():
     return df1
 
 
+def get_data_by_name(store_name):
+    conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
+    table_create_query = f'''
+            SELECT * FROM ROBOT.{robot_name.replace("-", "_")}
+            where store_name = '{store_name}'
+            order by started_time desc
+            '''
+    cur = conn.cursor()
+    cur.execute(table_create_query)
+
+    df1 = pd.DataFrame(cur.fetchall())
+    # df1.columns = ['started_time', 'ended_time', 'store_id', 'name', 'status', 'error_reason', 'error_saved_path', 'execution_time']
+
+    cur.close()
+    conn.close()
+
+    return len(df1)
+
+
 def insert_data_in_db(started_time, store_id, store_name, status, error_reason, error_saved_path, execution_time):
-    return 0
+
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
 
     print('Started inserting')
+    query_delete_id = f"""
+            delete from ROBOT.{robot_name.replace("-", "_")} where store_id = '{store_id}'
+        """
     query_delete = f"""
         delete from ROBOT.{robot_name.replace("-", "_")} where store_name = '{store_name}'
     """
@@ -147,7 +147,6 @@ def insert_data_in_db(started_time, store_id, store_name, status, error_reason, 
         INSERT INTO ROBOT.{robot_name.replace("-", "_")} (started_time, ended_time, store_id, store_name, status, error_reason, error_saved_path, execution_time)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """
-    print('Inserting1')
 
     values = (
         started_time,
@@ -165,16 +164,13 @@ def insert_data_in_db(started_time, store_id, store_name, status, error_reason, 
 
     cursor.execute(query_delete)
     # conn.autocommit = True
-    print(1)
     try:
-        print(2)
         cursor.execute(query_delete)
+        cursor.execute(query_delete_id)
     except Exception as e:
         print('GOVNO', e)
         pass
-    print(3)
     try:
-        print(4)
         cursor.execute(query, values)
     except Exception as e:
         conn.rollback()
@@ -219,38 +215,48 @@ def get_all_branches_with_codes():
 
 def sign_ecp(ecp):
     logger.info('Started ECP')
-    print('Kek')
+    # print('Kek')
     logger.info(f'KEY: {ecp}')
-    print('Kek1')
+    # print(f'KEY: {ecp}')
     app = App('')
 
     el = {"title": "Открыть файл", "class_name": "SunAwtDialog", "control_type": "Window",
           "visible_only": True, "enabled_only": True, "found_index": 0, "parent": None}
 
-    if app.wait_element(el):
-
-        logger.info(ecp)
+    if app.wait_element(el, timeout=30):
 
         keyboard.send_keys(ecp.replace('(', '{(}').replace(')', '{)}'), pause=0.01, with_spaces=True)
         sleep(0.05)
         keyboard.send_keys('{ENTER}')
 
-        app.wait_element({"title_re": "Формирование ЭЦП.*", "class_name": "SunAwtDialog", "control_type": "Window",
-                          "visible_only": True, "enabled_only": True, "found_index": 0, "parent": None})
+        if app.wait_element({"title_re": "Формирование ЭЦП.*", "class_name": "SunAwtDialog", "control_type": "Window",
+                             "visible_only": True, "enabled_only": True, "found_index": 0, "parent": None}, timeout=30):
+            app.find_element({"title_re": "Формирование ЭЦП.*", "class_name": "SunAwtDialog", "control_type": "Window",
+                              "visible_only": True, "enabled_only": True, "found_index": 0, "parent": None}).type_keys('Aa123456')
 
-        keyboard.send_keys('Aa123456')
-        sleep(1.5)
+            # keyboard.send_keys('Aa123456')
+            sleep(2)
 
-        keyboard.send_keys('{ENTER}')
-        sleep(1.5)
+            keyboard.send_keys('{ENTER}')
+            sleep(3)
 
-        keyboard.send_keys('{ENTER}')
-
+            keyboard.send_keys('{ENTER}')
+            app = None
+            logger.info('Finished ECP')
+        else:
+            logger.info('Quit mazafaka1')
+            app = None
+            return 'broke'
     else:
         logger.info('Quit mazafaka')
-        app.find_element({"title": "Закрыть", "class_name": "", "control_type": "Button",
-                          "visible_only": True, "enabled_only": True, "found_index": 0}).click()
-
+        # try:
+        #     app.find_element({"title": "Закрыть", "class_name": "", "control_type": "Button",
+        #                       "visible_only": True, "enabled_only": True, "found_index": 0}, ti).click()
+        #     app.quit()
+        # except:
+        #     pass
+        app = None
+        return 'broke'
     # app.quit()
 
 
@@ -279,8 +285,82 @@ def wait_loading(web, xpath):
         ind += 1
 
 
-def start_single_branch(filepath, store, values_first_part, values_second_part):
+def create_and_send_final_report():
 
+    if __name__ == '__main__':
+
+        df = get_all_data()
+
+        df[df.columns[-1]] = df[df.columns[-1]].astype(float)
+        df[df.columns[-1]] = df[df.columns[-1]].round()
+
+        df.columns = ['Время начала', 'Время окончания', 'Номер филиала', 'Название филиала', 'Статус', 'Причина ошибки', 'Пусть сохранения скриншота', 'Время исполнения (сек)']
+
+        df.to_excel('result.xlsx', index=False)
+
+        workbook = load_workbook('result.xlsx')
+        sheet = workbook.active
+
+        red_fill = PatternFill(start_color="FFA864", end_color="FFA864", fill_type="solid")
+        green_fill = PatternFill(start_color="A6FF64", end_color="A6FF64", fill_type="solid")
+
+        for cell in sheet['E']:
+            if cell.value == 'failed':
+                cell.fill = red_fill
+            if cell.value == 'success':
+                cell.fill = green_fill
+
+        for col in 'ABCDGH':
+
+            max_length = max(len(str(cell.value)) for cell in sheet[col])
+
+            if col == 'A' or col == 'B':
+                max_length -= 3
+            if col == 'D':
+                max_length += 5
+            if col == 'A':
+                max_length -= 3
+
+            sheet.column_dimensions[col].width = max_length
+
+        for col in 'ABCDGEFGH':
+            for cell in sheet[col]:
+                cell.alignment = Alignment(horizontal='center')
+
+        workbook.save('result.xlsx')
+
+        send_file_to_tg(tg_token, chat_id, 'Дросте', 'result.xlsx')
+
+
+def wait_image_loaded():
+    found = False
+    while True:
+        for file in os.listdir(download_path):
+            if '.jpg' in file and 'crdownload' not in file:
+                shutil.move(os.path.join(download_path, file), os.path.join(os.path.join(download_path, 'Отчёты 2т'), branch + '_1.jpg'))
+                print(file)
+                found = True
+                break
+        if found:
+            break
+
+
+def save_and_send(web, save):
+    if save:
+        web.execute_script_click_xpath("//span[text() = 'Сохранить']")
+        sleep(1)
+        print('Clicked Save')
+        if web.wait_element("//span[text() = 'Сохранить отчет и Удалить другие']", timeout=5):
+            web.execute_script_click_xpath("//span[text() = 'Сохранить отчет и Удалить другие']")
+    print('Clicking Send')
+    web.execute_script_click_xpath("//span[text() = 'Отправить']")
+    print('Clicked Send')
+    web.wait_element("//input[@value = 'Персональный компьютер']", timeout=30)
+    web.execute_script_click_xpath("//input[@value = 'Персональный компьютер']")
+
+
+def start_single_branch(filepath, store, values_first_part, values_second_part):
+    print('Started web')
     web = Web()
     web.run()
     web.get('https://cabinet.stat.gov.kz/')
@@ -310,20 +390,15 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
     sign_ecp(ecp_auth)
 
     logged_in = web.wait_element('//*[@id="idLogout"]/a', timeout=30)
-
+    # sleep(1000)
     if logged_in:
         if web.find_element("//a[text() = 'Выйти']"):
-
-            # print(web.wait_element('//*[@id="dontAgreeId-inputEl"]', timeout=5), end=' ')
-            # print(web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5), end='\n==========\n')
 
             if web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5):
                 try:
                     web.find_element("//span[contains(text(), 'Пройти позже')]").click()
                 except:
                     save_screenshot(store)
-                    # print('HUETA')
-                    # sleep(200)
             logger.info('Check0')
             if web.wait_element('//*[@id="dontAgreeId-inputEl"]', timeout=5):
                 web.find_element('//*[@id="dontAgreeId-inputEl"]').click()
@@ -355,16 +430,14 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             if web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=1.5):
                 web.execute_script_click_xpath("//span[contains(text(), 'Пройти позже')]")
             sleep(1)
-            # wait_loading(web, '//*[@id="radio-1132-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
-            # wait_loading(web, '//*[@id="radio-1131-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
-            # wait_loading(web, '//*[@id="radio-1132-boxLabelEl"]')  # ? УБРАТЬ В БОЮ
-            # # web.find_element('//*[@id="radio-1132-boxLabelEl"]').click()
-            # sleep(10)
+
+            # ? Check if 2T exists
             for i in range(3):
-                # wait_loading(web, '//*[@id="loadmask-1315"]')
+
+                wait_loading(web, '//*[@id="loadmask-1315"]')
                 if web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=1.5):
                     web.execute_script_click_xpath("//span[contains(text(), 'Пройти позже')]")
-                if web.wait_element("//div[contains(text(), '2-торговля')]", timeout=12):
+                if web.wait_element("//div[contains(text(), '2-торговля')]", timeout=3):
                     web.find_element("//div[contains(text(), '2-торговля')]").click()
                 else:
                     if i < 2:
@@ -388,6 +461,8 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             web.find_element('//*[@id="createReportId-btnIconEl"]').click()
 
             sleep(1)
+
+            # ? Switch to the second window
             web.driver.switch_to.window(web.driver.window_handles[-1])
 
             web.wait_element('//*[@id="td_select_period_level_1"]/span')
@@ -407,10 +482,11 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             logger.info('Check3')
             web.wait_element('//*[@id="sel_statcode_accord"]/div/p/b[1]')
             web.execute_script_click_js("body > div:nth-child(16) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1) > span")
-
+            # sleep(10900)
             web.wait_element('//*[@id="sel_rep_accord"]/h3[1]/a')
 
-            # ? Send already filled forms
+            # # ? Send already filled forms
+            # # ? Uncomment it if you want to update last saved form
             if web.wait_element('//*[@id="sel_rep_accord"]/h3[2]/a', timeout=1):
                 web.execute_script_click_xpath("//*[@id='sel_rep_accord']/h3[2]/a")
 
@@ -418,46 +494,59 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
                 web.wait_element("//a[contains(text(), 'Страница 1')]")
 
-                web.execute_script_click_xpath("//span[text() = 'Отправить']")
-                print('Clicked Send')
-                web.wait_element("//input[@value = 'Персональный компьютер']", timeout=30)
-                web.execute_script_click_xpath("//input[@value = 'Персональный компьютер']")
+                sleep(5)
+                for ind, group in enumerate(groups):
+                    # sleep(1)
+                    if group == 'Объем розничной торговли':
+                        try:
+                            print('OOOU EE:', web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
+                            web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[0]))
+                        except:
+                            web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value='0')
 
-                sign_ecp(ecp_sign)
-                # sleep(1000)
-                # print(store.replace('Торговый зал', '').replace(' ', '').replace('№', ''))
-                # sleep(30)
+                        try:
+                            print('OOOU EE:', web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title"))
+                            web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(values_first_part[1]))
+                        except:
+                            web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value='0')
 
-                found = False
-                while True:
-                    for file in os.listdir(download_path):
-                        if '.jpg' in file and 'crdownload' not in file:
-                            shutil.move(os.path.join(download_path, file), os.path.join(os.path.join(download_path, 'Отчёты 2т'), branch + '_1.jpg'))
-                            print(file)
-                            found = True
-                            break
-                    if found:
-                        break
+                    elif group == 'Товарные запасы на конец отчетного месяца':
+                        try:
+                            print('OOOU EE:', web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
+                            web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[2]))
+                        except:
+                            web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value='0')
 
-                web.close()
-                web.quit()
+                    else:
+                        try:
+                            cur_val = round(round(values_second_part.get(group)) / 1000)
+                            if cur_val < 100:
+                                cur_val = 100
+                            if cur_val > 9999:
+                                cur_val = 9999
+                            web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=cur_val)
+                        except:
+                            web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value='0')
 
-                print('Successed')
-                return ['success', '']
+                sleep(50)
+                return 0
+                # save_and_send(web, save=False)
+                #
+                # sign_ecp(ecp_sign)
+                # # sleep(1000)
+                # # print(store.replace('Торговый зал', '').replace(' ', '').replace('№', ''))
+                # # sleep(30)
+                #
+                # wait_image_loaded()
+                #
+                # web.close()
+                # web.quit()
+                #
+                # print('Successed')
+                # return ['success', '']
 
+            # ? Open new report to fill it
             web.execute_script_click_js("body > div:nth-child(18) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1)")
-
-            groups = ['Объем розничной торговли',
-                      'Товарные запасы на конец отчетного месяца',
-                      'Рис',
-                      'гречневая',
-                      'подсолнечн',
-                      'белокоч',
-                      'репчатый',
-                      'Морковь',
-                      'Картофель',
-                      'Сахар',
-                      'Соль']
 
             web.wait_element("//a[contains(text(), 'Страница 1')]")
             web.find_element("//a[contains(text(), 'Страница 1')]").click()
@@ -469,23 +558,31 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                 if group == 'Объем розничной торговли':
                     try:
                         web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[0]))
+                        print('OOOU EE:', web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
                     except:
                         web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value='0')
 
                     try:
                         web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(values_first_part[1]))
+                        print('OOOU EE:', web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title"))
                     except:
                         web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value='0')
 
                 elif group == 'Товарные запасы на конец отчетного месяца':
                     try:
                         web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[2]))
+                        print('OOOU EE:', web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
                     except:
                         web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value='0')
 
                 else:
                     try:
-                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(round(values_second_part.get(group)) / 1000))
+                        cur_val = round(round(values_second_part.get(group)) / 1000)
+                        if cur_val < 100:
+                            cur_val = 100
+                        if cur_val > 9999:
+                            cur_val = 9999
+                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(cur_val))
                     except:
                         web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value='0')
             sleep(0.1)
@@ -495,33 +592,13 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_1']", value='87073332438')
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_2']", value='87073332438')
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_3']", value='KALDYBEK.B@magnum.kz')
-
-            web.execute_script_click_xpath("//span[text() = 'Сохранить']")
-            sleep(1)
-            print('Clicked Save')
-            if web.wait_element("//span[text() = 'Сохранить отчет и Удалить другие']", timeout=5):
-                web.execute_script_click_xpath("//span[text() = 'Сохранить отчет и Удалить другие']")
-            print('Clicking Send')
-            web.execute_script_click_xpath("//span[text() = 'Отправить']")
-            print('Clicked Send')
-            web.wait_element("//input[@value = 'Персональный компьютер']", timeout=30)
-            web.execute_script_click_xpath("//input[@value = 'Персональный компьютер']")
+            sleep(100)
+            save_and_send(web, save=True)
 
             sign_ecp(ecp_sign)
             # sleep(1000)
-            # print(store.replace('Торговый зал', '').replace(' ', '').replace('№', ''))
-            # sleep(30)
 
-            found = False
-            while True:
-                for file in os.listdir(download_path):
-                    if '.jpg' in file and 'crdownload' not in file:
-                        shutil.move(os.path.join(download_path, file), os.path.join(os.path.join(download_path, 'Отчёты 2т'), branch))
-                        print(file)
-                        found = True
-                        break
-                if found:
-                    break
+            wait_image_loaded()
 
             web.close()
             web.quit()
@@ -547,8 +624,11 @@ def get_data_from_1157(branch):
 
 if __name__ == '__main__':
 
-    create_and_send_final_report()
-    exit()
+    # create_and_send_final_report()
+    # exit()
+
+    # drop_table()
+
     sql_create_table()
     # start = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")
     # insert_data_in_db(started_time=start, store_id=2350, store_name='Loh', status='failed', error_reason='guano', error_saved_path='', execution_time='10s')
@@ -561,7 +641,7 @@ if __name__ == '__main__':
     counter = 2
 
     df = pd.DataFrame(columns=['id', 'branch', 'data'])
-
+    print(download_path)
     for file in os.listdir(download_path):
 
         if file == '!result.xlsx':
@@ -569,14 +649,20 @@ if __name__ == '__main__':
             book = load_workbook(os.path.join(download_path, file))
             sheet = book.active
             # month = datetime.datetime.today().month
-            month = 7
+            month = 0
+
             months = 'DEFGHIJKLMNO'
+
+            for ind, letter in enumerate(months):
+                if sheet[letter + '2'].value is not None:
+                    print(letter)
+                    month = ind + 1
+
             print('MON:', month, months[month - 1])
             while sheet[f'A{counter}'].value is not None:
                 all_branches.append([sheet[f'A{counter}'].value, sheet[f'B{counter}'].value, [sheet[f'{months[month - 1]}{counter}'].value, sheet[f'{months[month - 1]}{counter + 1}'].value, sheet[f'{months[month - 1]}{counter + 2}'].value]])
 
                 row = pd.DataFrame({'id': sheet[f'A{counter}'].value, 'branch': sheet[f'B{counter}'].value, 'data': [[sheet[f'{months[month - 1]}{counter}'].value, sheet[f'{months[month - 1]}{counter + 1}'].value, sheet[f'{months[month - 1]}{counter + 2}'].value]]})
-
                 df = pd.concat([df, row], ignore_index=True)
                 counter += 3
 
@@ -604,7 +690,7 @@ if __name__ == '__main__':
     # if status != 'success':
     #     all_rows = get_all_data()
     #
-    #     all_bad_rows = all_rows[all_rows['statxus'] != 'success']
+    #     all_bad_rows = all_rows[all_rows['status'] != 'success']
     #
     #     all_bad_rows['store_normal_name'] = None
     #     all_bad_rows = all_bad_rows.reset_index(inplace=False)
@@ -617,23 +703,25 @@ if __name__ == '__main__':
 
     print('Len:', len(df))
     check = False
-    for ind, branch in enumerate(np.asarray(df['name'])[2:]):
-        if branch not in ['Торговый зал АСФ №11', 'Торговый зал АСФ №14', 'Торговый зал АСФ №15',
-                          'Торговый зал АСФ №17', 'Торговый зал АСФ №19', 'Торговый зал АСФ №2',
-                          'Торговый зал АСФ №21', 'Торговый зал АСФ №25', 'Торговый зал АСФ №26', 'Торговый зал АСФ №4', 'Торговый зал АСФ №40',
-                          'Торговый зал АСФ №55', 'Торговый зал АСФ №6', 'Торговый зал АСФ №62', 'Торговый зал АСФ №64', 'Торговый зал АСФ №65', 'Торговый зал АСФ №7', 'Торговый зал АСФ №72', 'Торговый зал АСФ №8', 'Торговый зал АСФ №9', 'Торговый зал АФ №10', 'Торговый зал АФ №12', 'Торговый зал АФ №14', 'Торговый зал АФ №15', 'Торговый зал АФ №16', 'Торговый зал АФ №17', 'Торговый зал АФ №2', 'Торговый зал АФ №20', 'Торговый зал АФ №22', 'Торговый зал АФ №24', 'Торговый зал АФ №26', 'Торговый зал АФ №28', 'Торговый зал АФ №29', 'Торговый зал АФ №30', 'Торговый зал АФ №31', 'Торговый зал АФ №33', 'Торговый зал АФ №35', 'Торговый зал АФ №38', 'Торговый зал АФ №39', 'Торговый зал АФ №4',
-                          'Торговый зал АФ №40', 'Торговый зал АФ №41', 'Торговый зал АФ №42', 'Торговый зал АФ №45', 'Торговый зал АФ №48', 'Торговый зал АФ №50', 'Торговый зал АФ №52', 'Торговый зал АФ №53', 'Торговый зал АФ №6', 'Торговый зал АФ №9', 'Торговый зал КЗФ №1', 'Торговый зал КФ №2', 'Торговый зал КФ №4', 'Торговый зал ППФ №1', 'Торговый зал ППФ №16', 'Торговый зал ППФ №4', 'Торговый зал ППФ №8', 'Торговый зал ТЗФ №1', 'Торговый зал ТКФ №1', 'Торговый зал ТФ №1', 'Торговый зал ТФ №2', 'Торговый зал ТФ №3', 'Торговый зал ТФ №4', 'Торговый зал ФКС №1', 'Торговый зал ШФ №1', 'Торговый зал ШФ №15', 'Торговый зал ШФ №2', 'Торговый зал ШФ №23', 'Торговый зал ШФ №3', 'Торговый зал ШФ №30', 'Торговый зал ШФ №7', 'Торговый зал ШФ №9']:
-            continue
-        # if branch == 'Торговый зал АСФ №6':
+
+    for ind, branch in enumerate(np.asarray(df['name'])):
+        # print(df['store_normal_name'].iloc[ind], branch)
+        # continue
+        # if get_data_by_name(branch) != 0:
         #     continue
-        # stores = ['Торговый зал АСФ №35', 'Торговый зал АФ №23', 'Торговый зал АФ №19', 'Торговый зал УКФ №1', 'Торговый зал АФ №5']
-        # if branch not in stores:
+        # if 'Т' not in branch[1:]:
         #     continue
-        if branch == 'Торговый зал КЗФ №1':
-            check = True
-        if not check:
-            print(branch)
+        if branch != 'Торговый зал ШФ №4':
             continue
+        # stores = ['Торговый зал АФ №51', 'Торговый зал АФ №21', 'Торговый зал АФ №16', 'Торговый зал ФКС №1', 'Торговый зал АФ №20', 'Торговый зал АСФ №12']
+        # print(branch)
+        # if branch in stores:
+        #     continue
+        # if branch == 'Торговый зал АСФ №70':
+        #     check = True
+        # if not check:
+        #     print(branch)
+        #     continue
 
         ecp_path = fr'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{branch}'
 
@@ -643,16 +731,25 @@ if __name__ == '__main__':
             try:
                 print('Started', ind, branch)
                 send_message_to_tg(tg_token, chat_id, f'Started, {ind}, {branch}')
+
+                # ? Get the sum of each subgroup to fill
                 data_from_1157 = get_data_from_1157(df[df['name'] == branch]['store_normal_name'].iloc[0])
+
                 dick = dict()
                 for j in data_from_1157['Подгруппа'].unique():
                     dick.update({j: sum(data_from_1157[data_from_1157['Подгруппа'] == j]['Фактические остатки'])})
+
                 keys = list(dick.keys())
+
+                # ? Setting values for each group with corresponding mapping
                 for i in keys:
                     dick[dick1.get(i)] = dick.pop(i)
-                # print('===============\n\n')
+
+                print()
+                print(df[df['name'] == branch])
                 logger.info(df[df['name'] == branch]['data'].iloc[0])
                 logger.info(dick)
+
                 try:
                     status, saved_path = start_single_branch(ecp_path, branch, df[df['name'] == branch]['data'].iloc[0], dick)
                 except Exception as poebotnya:
@@ -662,10 +759,10 @@ if __name__ == '__main__':
 
                 end_time = time.time()
 
-                if status != 'success':
-                    insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status='failed', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time))
-                else:
-                    insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status='success', error_reason='', error_saved_path='', execution_time=str(end_time - start_time))
+                # if status != 'success':
+                #     insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status='failed', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time))
+                # else:
+                #     insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status='success', error_reason='', error_saved_path='', execution_time=str(end_time - start_time))
 
                 send_message_to_tg(tg_token, chat_id, f'Finished, {ind}, {branch}')
 
@@ -674,5 +771,5 @@ if __name__ == '__main__':
                 end_time = time.time()
                 saved_path = save_screenshot(df['name'].iloc[ind])
                 insert_data_in_db(started_time=start, store_id=int(df['store_id'].iloc[ind]), store_name=str(branch), status='polomalsya', error_reason=str(ebanko), error_saved_path=saved_path, execution_time=str(end_time - start_time))
-
-    create_and_send_final_report()
+    # print(k)
+    # create_and_send_final_report()

@@ -79,5 +79,5 @@ db_pass = global_env_data['postgre_db_password']
 
 if ctypes.windll.user32.GetKeyboardLayout(0) != 67699721:
     __err__ = 'Смените раскладку на ENG'
-    logger.exception(__err__)
+    # logger.exception(__err__)
     raise Exception(__err__)

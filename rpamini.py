@@ -39,6 +39,8 @@ from selenium.webdriver.support.wait import WebDriverWait
 from win32api import GetMonitorInfo, MonitorFromPoint
 from win32api import GetUserNameEx, NameSamCompatible
 
+from config import logger, tg_token, chat_id
+
 process_list_path = Path.home().joinpath('AppData\\Local\\.rpa\\process_list.json')
 MONEY_FORMAT = '# ##0.00_-'
 
@@ -1135,3 +1137,18 @@ def msg_tg_through_orc(msg):
         requests.post('https://rpa.magnum.kz/tg', data={'chat_id': '-939713300', 'message': msg}, verify=False)
     except Exception as exc:
         print("cannot send message to tg through orc")
+
+
+def universal_logger(message, bot_token=tg_token, chat_id=chat_id):
+    import requests
+
+    for i in range(3):
+        try:
+            requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={'chat_id': chat_id, 'text': message}, verify=False)
+            logger.info(message)
+            print(message)
+            break
+        except Exception as e:
+            print(e)
+            time.sleep(1)
+            pass
