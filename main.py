@@ -342,7 +342,7 @@ def create_and_send_final_report():
 
         workbook.save('result.xlsx')
 
-        send_file_to_tg(tg_token, chat_id, 'Дросте', 'result.xlsx')
+        send_file_to_tg(tg_token, chat_id, 'Отправляем отчёт по заполнению', 'result.xlsx')
 
 
 def wait_image_loaded():
@@ -468,13 +468,12 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
                         print('Return those shit')
                         return ['Нет 2-т', saved_path, '']
-            logger.info('Check2')
             sleep(0.5)
 
             web.find_element('//*[@id="createReportId-btnIconEl"]').click()
 
             sleep(1)
-            logger.info('Check9919')
+
             # ? Switch to the second window
             web.driver.switch_to.window(web.driver.window_handles[-1])
 
@@ -491,7 +490,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                 web.quit()
 
                 print('Return that shit')
-                return ['Выскочила хуета', saved_path, '']
+                return ['Выскочила херня', saved_path, '']
             logger.info('Check3')
             web.wait_element('//*[@id="sel_statcode_accord"]/div/p/b[1]')
             web.execute_script_click_js("body > div:nth-child(16) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1) > span")
@@ -511,48 +510,36 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                 sleep(.5)
                 logger.info(values_first_part)
                 for ind, group in enumerate(groups):
-                    # sleep(1)
-                    if group == 'Объем розничной торговли':
-                        if True:
-                            try:
-                                sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
-                            except:
-                                sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
-                            # print('OOOU EE:', web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
-                            web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[0]))
-                        # except:
-                        #     web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value='0')
 
-                        if True:
-                            try:
-                                sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title")))
-                            except:
-                                sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title"))
-                            web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(values_first_part[1]))
-                        # except:
-                        #     web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value='0')
+                    if group == 'Объем розничной торговли':
+                        try:
+                            sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
+                        except:
+                            sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
+                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[0]))
+
+                        try:
+                            sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title")))
+                        except:
+                            sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title"))
+                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(values_first_part[1]))
 
                     elif group == 'Товарные запасы на конец отчетного месяца':
-                        if True:
-                            try:
-                                sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
-                            except:
-                                sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
-                            web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[2]))
-                        # except:
-                        #     web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value='0')
+                        try:
+                            sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
+                        except:
+                            sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
+                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[2]))
 
+                    # ? Filling second part of the 1st page
                     else:
-                        if True:
-                            cur_val = round(round(values_second_part.get(group)) / 1000)
-                            if cur_val < 10:
-                                cur_val = 10
-                            if cur_val > 9999:
-                                cur_val = 9999
-                            logger.info(f'cur_val: {cur_val}')
-                            web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=cur_val)
-                        # except:
-                        #     web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value='0')
+                        cur_val = round(round(values_second_part.get(group)) / 1000)
+                        if cur_val < 10:
+                            cur_val = 10
+                        if cur_val > 9999:
+                            cur_val = 9999
+                        logger.info(f'cur_val: {cur_val}')
+                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=cur_val)
                 sleep(0.1)
 
                 save_and_send(web, save=False)
@@ -573,7 +560,6 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                     return ['success', '', sites]
                 else:
                     return ['success', 'Были разные данные', sites]
-                # return ['success', '']
 
             # ? Open new report to fill it
             web.execute_script_click_js("body > div:nth-child(18) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1)")
@@ -584,50 +570,41 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             web.find_element('//*[@id="rtime"]').select('2')
             sleep(1)
             for ind, group in enumerate(groups):
-                # sleep(1)
-                if group == 'Объем розничной торговли':
-                    if True:
-                        try:
-                            sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
-                        except:
-                            sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
-                        # print('OOOU EE:', web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
-                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[0]))
-                    # except:
-                    #     web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value='0')
 
-                    if True:
-                        try:
-                            sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title")))
-                        except:
-                            sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title"))
-                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(values_first_part[1]))
-                    # except:
-                    #     web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value='0')
+                if group == 'Объем розничной торговли':
+                    try:
+                        sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
+                    except:
+                        sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
+                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[0]))
+
+                    try:
+                        sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title")))
+                    except:
+                        sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title"))
+                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(values_first_part[1]))
 
                 elif group == 'Товарные запасы на конец отчетного месяца':
-                    if True:
-                        try:
-                            sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
-                        except:
-                            sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
-                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[2]))
-                    # except:
-                    #     web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value='0')
+                    try:
+                        sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
+                    except:
+                        sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
+                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[2]))
 
+                # ? Filling second part of the 1st page
                 else:
-                    if True:
-                        cur_val = round(round(values_second_part.get(group)) / 1000)
-                        if cur_val < 10:
-                            cur_val = 10
-                        if cur_val > 9999:
-                            cur_val = 9999
-                        logger.info(f'cur_val: {cur_val}')
-                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=cur_val)
-                    # except:
-                    #     web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value='0')
-                sleep(0.1)
+                    cur_val = round(round(values_second_part.get(group)) / 1000)
+                    if cur_val < 10:
+                        cur_val = 10
+                    if cur_val > 9999:
+                        cur_val = 9999
+                    logger.info(f'cur_val: {cur_val}')
+                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=cur_val)
+
+            sleep(0.1)
             logger.info('Check4')
+
+            # ? Second page
             web.find_element("//a[contains(text(), 'Данные исполнителя')]").click()
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_0']", value='Қалдыбек Б.Ғ.')
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_1']", value='87073332438')
@@ -721,7 +698,7 @@ if __name__ == '__main__':
             df1 = get_all_branches_with_codes()
             break
         except:
-            print('Error with adb')
+            print('Error with adb dwh')
             sleep(120)
 
     df['name'] = None
@@ -735,43 +712,28 @@ if __name__ == '__main__':
 
     # ? Execute only rows with exact status
 
-    status = 'succ1ess'
+    status = 'success'
 
-    # if status != 'success':
-    #     all_rows = get_all_data()
-    #
-    #     all_bad_rows = all_rows[all_rows['status'] != 'success']
-    #
-    #     all_bad_rows['store_normal_name'] = None
-    #     all_bad_rows = all_bad_rows.reset_index(inplace=False)
-    #     for i in range(len(all_bad_rows)):
-    #         all_bad_rows.loc[i, 'store_normal_name'] = df1[df1['store_id'] == all_bad_rows['store_id'].iloc[i]]['store_normal_name'].iloc[0]
-    #
-    #     df_prev = df.copy()
-    #     df = all_bad_rows
-    #     df['data'] = df_prev['data']
+    if status != 'success':
+        all_rows = get_all_data()
+
+        all_bad_rows = all_rows[all_rows['status'] != 'success']
+
+        all_bad_rows['store_normal_name'] = None
+        all_bad_rows = all_bad_rows.reset_index(inplace=False)
+        for i in range(len(all_bad_rows)):
+            all_bad_rows.loc[i, 'store_normal_name'] = df1[df1['store_id'] == all_bad_rows['store_id'].iloc[i]]['store_normal_name'].iloc[0]
+
+        df_prev = df.copy()
+        df = all_bad_rows
+        df['data'] = df_prev['data']
 
     print('Len:', len(df))
     check = False
 
     for ind, branch in enumerate(np.asarray(df['name'][::-1])):
-        # print(df['store_normal_name'].iloc[ind], branch)
-        # continue
-        # if get_data_by_name(branch) != 0:
-        #     continue
-        # if 'Т' not in branch[1:]:
-        #     continue
-        if branch != 'Торговый зал АФ №23':
-            continue
 
-        # stores = ['Торговый зал АФ №51', 'Торговый зал АФ №21', 'Торговый зал АФ №16', 'Торговый зал ФКС №1', 'Торговый зал АФ №20', 'Торговый зал АСФ №12']
-        # print(branch)
-        # if branch in stores:
-        #     continue
-        # if branch == 'Торговый зал АФ №16':
-        #     check = True
-        # if not check:
-        #     print(branch)
+        # if branch != 'Торговый зал АФ №23':
         #     continue
 
         ecp_path = fr'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{branch}'
@@ -781,12 +743,14 @@ if __name__ == '__main__':
             start_time = time.time()
             try:
                 print('Started', ind, branch)
-                send_message_to_tg(tg_token, chat_id, f'Started, {ind}, {branch}')
+                send_message_to_tg(tg_token, chat_id, f'Начал, {ind}, {branch}')
 
                 # ? Get the sum of each subgroup to fill
                 data_from_1157 = get_data_from_1157(df[df['name'] == branch]['store_normal_name'].iloc[0])
 
                 dick = dict()
+
+                # ? Getting data from 1157 and adding it to the corresponding branch
                 for j in data_from_1157['Подгруппа'].unique():
                     dick.update({j: sum(data_from_1157[data_from_1157['Подгруппа'] == j]['Фактические остатки'])})
 
@@ -799,8 +763,8 @@ if __name__ == '__main__':
                 print(df[df['name'] == branch])
                 logger.info(df[df['name'] == branch]['data'].iloc[0])
                 logger.info(dick)
-                send_message_to_tg(tg_token, chat_id, f"BRANCH, {df[df['name'] == branch]['name'].iloc[0]}")
-                send_message_to_tg(tg_token, chat_id, f"DATA, {df[df['name'] == branch]['data'].iloc[0]}")
+                send_message_to_tg(tg_token, chat_id, f"Филиал, {df[df['name'] == branch]['name'].iloc[0]}")
+                send_message_to_tg(tg_token, chat_id, f"Данные, {df[df['name'] == branch]['data'].iloc[0]}")
 
                 facts = df[df['name'] == branch]['data'].iloc[0]
                 try:
@@ -826,4 +790,5 @@ if __name__ == '__main__':
                 saved_path = save_screenshot(df['name'].iloc[ind])
                 insert_data_in_db(started_time=start, store_name=str(branch), status='polomalsya', error_reason=str(ebanko), error_saved_path=saved_path, execution_time=str(end_time - start_time), fact1='', fact2='', fact3='', site1='', site2='', site3='')
     # print(k)
-    # create_and_send_final_report()
+    create_and_send_final_report()
+    send_message_to_tg(tg_token, chat_id, f'Отработка заполнения стат отчёта 2Т Закончена!')
