@@ -1047,24 +1047,30 @@ class Web:
                 """)
 
     def execute_script_click_js(self, js_path):
-        self.driver.execute_script(f"""
-            var button = document.querySelector('{js_path}');
-            if (button) {{
-                button.click();
-            }}
-        """)
+        try:
+            self.driver.execute_script(f"""
+                var button = document.querySelector('{js_path}');
+                if (button) {{
+                    button.click();
+                }}
+            """)
+        except:
+            sleep(10)
 
     def execute_script_click_xpath(self, xpath):
-        self.driver.execute_script(f"""
-            var xpathExpression = "{xpath}";
-            var result = document.evaluate(xpathExpression, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-            var element = result.singleNodeValue;
-            
-            // Trigger the click event on the element
-            if (element) {{
-              element.click();
-            }}
-        """)
+        try:
+            self.driver.execute_script(f"""
+                var xpathExpression = "{xpath}";
+                var result = document.evaluate(xpathExpression, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                var element = result.singleNodeValue;
+                
+                // Trigger the click event on the element
+                if (element) {{
+                  element.click();
+                }}
+            """)
+        except:
+            sleep(10)
 
 
 # ? tested

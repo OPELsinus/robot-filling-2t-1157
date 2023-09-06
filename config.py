@@ -1,5 +1,6 @@
 import ctypes
 import logging
+import socket
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -42,6 +43,8 @@ sed_password = global_env_data['sed_password']
 process_list_path = local_path.joinpath('process_list.json')
 tg_token = global_env_data['tg_token']
 
+robot_name = 'robot-filling-2t-1157'
+
 basic_format = '%(asctime)s||%(levelname)s||%(message)s'
 date_format = '%Y-%m-%d,%H:%M:%S'
 logging.basicConfig(level=logging.INFO, format=basic_format, datefmt=date_format)
@@ -52,7 +55,7 @@ post_handler = PostHandler(f'{orc_host}:8443/log')
 post_handler.setFormatter(formatter)
 post_handler.setLevel(logging.INFO)
 logger.addHandler(post_handler)
-log_path = local_path.joinpath('.agent\\robot-filling-2t-1157\\logs.txt')
+log_path = local_path.joinpath(f'.agent\\{robot_name}\\logs.txt')
 log_path.parent.mkdir(exist_ok=True, parents=True)
 file_handler = RotatingFileHandler(log_path.__str__(), maxBytes=1 * 1024 * 1024, backupCount=50, encoding="utf-8")
 file_handler.setFormatter(formatter)
@@ -60,14 +63,17 @@ file_handler.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.setLevel(logging.DEBUG)
 
-config_path = local_path.joinpath('.agent\\robot-filling-2t-1157\\config.json')
+config_path = local_path.joinpath(f'.agent\\{robot_name}\\config.json')
 config_data = json_read(config_path)
 download_path = Path.home().joinpath('downloads')
 working_path = root_path.joinpath('working_path')
 working_path.mkdir(exist_ok=True, parents=True)
 chat_id = config_data['chat_id']
 
-robot_name = 'robot-filling-2t-1157'
+ip_address = socket.gethostbyname(socket.gethostname())
+
+saving_path = global_path.joinpath(f".agent\\{robot_name}\\Output")
+saving_path.mkdir(exist_ok=True, parents=True)
 
 db_host = global_env_data['postgre_ip']
 
