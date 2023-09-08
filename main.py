@@ -5,6 +5,7 @@ import shutil
 import sys
 import time
 import uuid
+from contextlib import suppress
 from pathlib import Path
 from time import sleep
 
@@ -51,7 +52,7 @@ groups = ['Объем розничной торговли',
 def drop_table():
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
     table_create_query = f'''
-            drop table robot.{robot_name.replace("-", "_")}_2
+            drop table robot.{robot_name.replace("-", "_")}
             '''
     c = conn.cursor()
     c.execute(table_create_query)
@@ -64,16 +65,18 @@ def drop_table():
 def sql_create_table():
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
     table_create_query = f'''
-        CREATE TABLE IF NOT EXISTS ROBOT.{robot_name.replace("-", "_")}_2 (
+        CREATE TABLE IF NOT EXISTS ROBOT.{robot_name.replace("-", "_")} (
             started_time timestamp,
             ended_time timestamp,
+            store_id int UNIQUE,
             store_name text UNIQUE,
-            executor_name,
+            full_name text UNIQUE,
+            executor_name text,
             status text,
             error_reason text,
             error_saved_path text,
             execution_time text,
-            ecp_path,
+            ecp_path text,
             fact1 text,
             fact2 text,
             fact3 text,
@@ -93,7 +96,7 @@ def sql_create_table():
 def delete_by_id(id):
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
     table_create_query = f'''
-                DELETE FROM ROBOT.{robot_name.replace("-", "_")}_2 WHERE id = '{id}'
+                DELETE FROM ROBOT.{robot_name.replace("-", "_")} WHERE id = '{id}'
                 '''
     c = conn.cursor()
     c.execute(table_create_query)
@@ -105,14 +108,14 @@ def delete_by_id(id):
 def get_all_data():
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
     table_create_query = f'''
-            SELECT * FROM ROBOT.{robot_name.replace("-", "_")}_2
+            SELECT * FROM ROBOT.{robot_name.replace("-", "_")}
             order by started_time asc
             '''
     cur = conn.cursor()
     cur.execute(table_create_query)
 
     df1 = pd.DataFrame(cur.fetchall())
-    df1.columns = ['started_time', 'ended_time', 'name', 'executor_name', 'status', 'error_reason', 'error_saved_path', 'execution_time', 'ecp_path', 'fact1', 'fact2', 'fact3', 'site1', 'site2', 'site3']
+    df1.columns = ['started_time', 'ended_time', 'store_id', 'name', 'full_name', 'executor_name', 'status', 'error_reason', 'error_saved_path', 'execution_time', 'ecp_path', 'fact1', 'fact2', 'fact3', 'site1', 'site2', 'site3']
 
     cur.close()
     conn.close()
@@ -123,7 +126,7 @@ def get_all_data():
 def get_data_by_name(store_name):
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
     table_create_query = f'''
-            SELECT * FROM ROBOT.{robot_name.replace("-", "_")}_2
+            SELECT * FROM ROBOT.{robot_name.replace("-", "_")}
             where store_name = '{store_name}'
             order by started_time desc
             '''
@@ -142,7 +145,7 @@ def get_data_by_name(store_name):
 def get_data_to_execute():
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
     table_create_query = f'''
-            SELECT * FROM ROBOT.{robot_name.replace("-", "_")}_2
+            SELECT * FROM ROBOT.{robot_name.replace("-", "_")}
             where (status != 'success' and status != 'processing')
             and (executor_name is NULL or executor_name = '{ip_address}')
             order by started_time desc
@@ -151,15 +154,17 @@ def get_data_to_execute():
     cur.execute(table_create_query)
 
     df1 = pd.DataFrame(cur.fetchall())
-    df1.columns = ['started_time', 'ended_time', 'name', 'executor_name', 'status', 'error_reason', 'error_saved_path', 'execution_time', 'ecp_path', 'fact1', 'fact2', 'fact3', 'site1', 'site2', 'site3']
+
+    with suppress(Exception):
+        df1.columns = ['started_time', 'ended_time', 'store_id', 'name', 'full_name', 'executor_name', 'status', 'error_reason', 'error_saved_path', 'execution_time', 'ecp_path', 'fact1', 'fact2', 'fact3', 'site1', 'site2', 'site3']
 
     cur.close()
     conn.close()
 
-    return len(df1)
+    return df1
 
 
-def insert_data_in_db(started_time, store_name, executor_name, status_, error_reason, error_saved_path, execution_time, ecp_path_, fact1, fact2, fact3, site1, site2, site3):
+def insert_data_in_db(started_time, store_id, store_name, full_name, executor_name, status_, error_reason, error_saved_path, execution_time, ecp_path_, fact1, fact2, fact3, site1, site2, site3):
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
 
     print('Started inserting')
@@ -167,26 +172,29 @@ def insert_data_in_db(started_time, store_name, executor_name, status_, error_re
     #         delete from ROBOT.{robot_name.replace("-", "_")}_2 where store_id = '{store_id}'
     #     """
     query_delete = f"""
-        delete from ROBOT.{robot_name.replace("-", "_")}_2 where store_name = '{store_name}'
+        delete from ROBOT.{robot_name.replace("-", "_")} where store_name = '{store_name}'
     """
     query = f"""
-        INSERT INTO ROBOT.{robot_name.replace("-", "_")}_2 (started_time, ended_time, store_name, executor_name, status, error_reason, error_saved_path, execution_time, ecp_path, fact1, fact2, fact3, site1, site2, site3)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO ROBOT.{robot_name.replace("-", "_")} (started_time, ended_time, store_id, store_name, full_name, executor_name, status, error_reason, error_saved_path, execution_time, ecp_path, fact1, fact2, fact3, site1, site2, site3)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
-    ended_time = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f") if status_ != 'processing' else ''
+    # ended_time = '' if status_ != 'success' else datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")
+    ended_time = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")
     values = (
         started_time,
         ended_time,
+        str(store_id),
         store_name,
+        full_name,
         executor_name,
         status_,
         error_reason,
         error_saved_path,
         execution_time,
         ecp_path_,
-        fact1,
-        fact2,
-        fact3,
+        str(fact1),
+        str(fact2),
+        str(fact3),
         site1,
         site2,
         site3
@@ -686,10 +694,12 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
 
 def get_data_from_1157(branch):
+    logger.info('----------------------------')
+    logger.info(branch)
     for file in os.listdir(r'\\172.16.8.87\d\.rpa\.agent\robot-1157-DWH\Output\Splitted'):
         if branch + '_' in file:
-            print('Read', os.path.join(r'\\172.16.8.87\d\.rpa\.agent\robot-1157-DWH\Output\Splitted', file))
-
+            logger.info('Read' + os.path.join(r'\\172.16.8.87\d\.rpa\.agent\robot-1157-DWH\Output\Splitted', file))
+            logger.info('----------------------------')
             return pd.read_excel(os.path.join(r'\\172.16.8.87\d\.rpa\.agent\robot-1157-DWH\Output\Splitted', file), header=0)
 
 
@@ -702,11 +712,11 @@ if __name__ == '__main__':
 
     print(ip_address)
 
-    # sql_create_table()
+    sql_create_table()
     # start = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")
     # insert_data_in_db(started_time=start, store_id=2350, store_name='Loh', status='failed', error_reason='guano', error_saved_path='', execution_time='10s')
     # exit()
-
+    # insert_data_in_db(started_time=start, store_name=str(branch), executor_name=ip_address, status_='processing', error_reason='', error_saved_path='', execution_time='', ecp_path_='', fact1='', fact2='', fact3='', site1='', site2='', site3='')
     update_credentials(Path(r'\\172.16.8.87\d\.rpa'), owa_username, owa_password)
     update_credentials(Path(r'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП'), owa_username, owa_password)
 
@@ -734,6 +744,13 @@ if __name__ == '__main__':
 
             print('MON:', month, months[month - 1])
             while sheet[f'A{counter}'].value is not None:
+
+                store_id = sheet[f'A{counter}'].value
+                store_name = sheet[f'B{counter}'].value
+                first, second, third = sheet[f'{months[month - 1]}{counter}'].value, sheet[f'{months[month - 1]}{counter + 1}'].value, sheet[f'{months[month - 1]}{counter + 2}'].value
+
+                # insert_data_in_db(started_time='', store_id=store_id, store_name=store_name, full_name=store_name, executor_name=ip_address, status_='new', error_reason='', error_saved_path='', execution_time='', ecp_path_='', fact1='', fact2='', fact3='', site1='', site2='', site3='')
+
                 all_branches.append([sheet[f'A{counter}'].value, sheet[f'B{counter}'].value, [sheet[f'{months[month - 1]}{counter}'].value, sheet[f'{months[month - 1]}{counter + 1}'].value, sheet[f'{months[month - 1]}{counter + 2}'].value]])
 
                 row = pd.DataFrame({'id': sheet[f'A{counter}'].value, 'branch': sheet[f'B{counter}'].value, 'data': [[sheet[f'{months[month - 1]}{counter}'].value, sheet[f'{months[month - 1]}{counter + 1}'].value, sheet[f'{months[month - 1]}{counter + 2}'].value]]})
@@ -761,23 +778,33 @@ if __name__ == '__main__':
 
     status = 'success'
 
-    if status != 'success':
-        all_rows = get_all_data()
+    # ? Dispatcher
+    # for ind in range(len(df)):
+    #     row = df.iloc[ind]
+    #
+    #     ecp_path = fr"\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{row['name']}"
+    #
+    #     insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=int(row['id']), store_name=row['name'], full_name=row['branch'], executor_name=None, status_='new', error_reason='', error_saved_path='', execution_time='', ecp_path_=ecp_path, fact1=int(row['data'][0]), fact2=int(row['data'][1]), fact3=int(row['data'][2]), site1='', site2='', site3='')
 
-        all_bad_rows = all_rows[all_rows['status'] != 'success']
-
-        all_bad_rows['store_normal_name'] = None
-        all_bad_rows = all_bad_rows.reset_index(inplace=False)
-
-        for i in range(len(all_bad_rows)):
-            all_bad_rows.loc[i, 'store_normal_name'] = df1[df1['store_id'] == all_bad_rows['store_id'].iloc[i]]['store_normal_name'].iloc[0]
-
-        df_prev = df.copy()
-        df = all_bad_rows
-        df['data'] = df_prev['data']
+    # if status != 'success':
+    #     all_rows = get_all_data()
+    #
+    #     all_bad_rows = all_rows[all_rows['status'] != 'success']
+    #
+    #     all_bad_rows['store_normal_name'] = None
+    #     all_bad_rows = all_bad_rows.reset_index(inplace=False)
+    #
+    #     for i in range(len(all_bad_rows)):
+    #         all_bad_rows.loc[i, 'store_normal_name'] = df1[df1['store_id'] == all_bad_rows['store_id'].iloc[i]]['store_normal_name'].iloc[0]
+    #
+    #     df_prev = df.copy()
+    #     df = all_bad_rows
+    #     df['data'] = df_prev['data']
 
     print('Len:', len(df))
     check = False
+
+    # ? Performer
 
     all_data = get_data_to_execute()
     print(list(all_data['name']))
@@ -786,7 +813,12 @@ if __name__ == '__main__':
     a = set()
     # create_and_send_final_report()
     # exit()
-    for ind, branch in enumerate(np.asarray(df['name'])):
+    for ind in range(len(df)):
+
+        branch = df['name'].iloc[ind]
+        full_name = df['branch'].iloc[ind]
+        id_ = df['id'].iloc[ind]
+        data = df['data'].iloc[ind]
 
         if branch not in list(all_data['name']):
             # print('Skipped', branch)
@@ -806,7 +838,7 @@ if __name__ == '__main__':
 
                 # ? Get the sum of each subgroup to fill
                 data_from_1157 = get_data_from_1157(df[df['name'] == branch]['store_normal_name'].iloc[0])
-
+                # print(data_from_1157)
                 dick = dict()
 
                 # ? Getting data from 1157 and adding it to the corresponding branch
@@ -819,15 +851,17 @@ if __name__ == '__main__':
                 for i in keys:
                     dick[dick1.get(i)] = dick.pop(i)
 
-                print(df[df['name'] == branch])
+                # print(df[df['name'] == branch])
                 logger.info(df[df['name'] == branch]['data'].iloc[0])
                 logger.info(dick)
+                continue
                 # send_message_to_tg(tg_token, chat_id, f"Филиал, {df[df['name'] == branch]['name'].iloc[0]}")
                 # send_message_to_tg(tg_token, chat_id, f"Данные, {df[df['name'] == branch]['data'].iloc[0]}")
-
                 facts = df[df['name'] == branch]['data'].iloc[0]
                 if True:
-                    insert_data_in_db(started_time=start, store_name=str(branch), executor_name=ip_address, status_='processing', error_reason='', error_saved_path='', execution_time='', ecp_path_=ecp_path, fact1=facts[0], fact2=facts[1], fact3=facts[2], site1='', site2='', site3='')
+                    insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=id_, store_name=branch, full_name=full_name,
+                                      executor_name=ip_address, status_='processing', error_reason='', error_saved_path='', execution_time='', ecp_path_=ecp_path, fact1=int(data[0]), fact2=int(data[1]), fact3=int(data[2]), site1='', site2='', site3='')
+
                     status, saved_path, sites = start_single_branch(ecp_path, branch, facts, dick)
                     if sites == '':
                         sites = [''] * 3
@@ -838,9 +872,12 @@ if __name__ == '__main__':
 
                 end_time = time.time()
                 if status != 'success':
-                    insert_data_in_db(started_time=start, store_name=str(branch), executor_name=ip_address, status_='failed', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=facts[0], fact2=facts[1], fact3=facts[2], site1=sites[0], site2=sites[1], site3=sites[2])
+                    insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=id_, store_name=branch, full_name=full_name,
+                                      executor_name=ip_address, status_='failed', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=int(data[0]), fact2=int(data[1]), fact3=int(data[2]), site1=sites[0], site2=sites[1], site3=sites[2])
+                    # insert_data_in_db(started_time=start, store_name=str(branch), executor_name=ip_address, status_='failed', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=facts[0], fact2=facts[1], fact3=facts[2], site1=sites[0], site2=sites[1], site3=sites[2])
                 else:
-                    insert_data_in_db(started_time=start, store_name=str(branch), executor_name=ip_address, status_='success', error_reason='', error_saved_path='', execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=facts[0], fact2=facts[1], fact3=facts[2], site1=sites[0], site2=sites[1], site3=sites[2])
+                    insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=id_, store_name=branch, full_name=full_name,
+                                      executor_name=ip_address, status_='success', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=int(data[0]), fact2=int(data[1]), fact3=int(data[2]), site1=sites[0], site2=sites[1], site3=sites[2])
 
                 # send_message_to_tg(tg_token, chat_id, f'Finished, {ind}, {branch}')
 
