@@ -146,7 +146,7 @@ def get_data_to_execute():
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
     table_create_query = f'''
             SELECT * FROM ROBOT.{robot_name.replace("-", "_")}
-            where (status != 'success' and status != 'processing')
+            where (status = 'new')
             and (executor_name is NULL or executor_name = '{ip_address}')
             order by started_time desc
             '''
@@ -331,12 +331,14 @@ def wait_loading(web, xpath):
 
 
 def create_and_send_final_report():
+
     df = get_all_data()
 
-    df.columns = ['Время начала', 'Время окончания', 'Название филиала', 'Статус', 'Причина ошибки', 'Пусть сохранения скриншота', 'Время исполнения (сек)', 'Факт1', 'Факт2', 'Факт3', 'Сайт1', 'Сайт2', 'Сайт3']
+    df.columns = ['Время начала', 'Время окончания', 'Номер филиала', 'Название филиала', 'Полное название', 'Машина', 'Статус', 'Причина ошибки', 'Пусть сохранения скриншота', 'Время исполнения (сек)', 'Путь к ЭЦП', 'Факт1', 'Факт2', 'Факт3', 'Сайт1', 'Сайт2', 'Сайт3']
 
-    df['Время исполнения (сек)'] = df['Время исполнения (сек)'].astype(float)
-    df['Время исполнения (сек)'] = df['Время исполнения (сек)'].round()
+    with suppress(Exception):
+        df['Время исполнения (сек)'] = df['Время исполнения (сек)'].astype(float)
+        df['Время исполнения (сек)'] = df['Время исполнения (сек)'].round()
 
     df.to_excel('result.xlsx', index=False)
 
@@ -346,7 +348,7 @@ def create_and_send_final_report():
     red_fill = PatternFill(start_color="FFA864", end_color="FFA864", fill_type="solid")
     green_fill = PatternFill(start_color="A6FF64", end_color="A6FF64", fill_type="solid")
 
-    for cell in sheet['D']:
+    for cell in sheet['G']:
         if cell.value == 'failed':
             cell.fill = red_fill
         if cell.value == 'success':
@@ -371,7 +373,7 @@ def create_and_send_final_report():
 
     workbook.save('result.xlsx')
 
-    send_file_to_tg(tg_token, chat_id, 'Отправляем отчёт по заполнению', 'result.xlsx')
+    # send_file_to_tg(tg_token, chat_id, 'Отправляем отчёт по заполнению', 'result.xlsx')
 
 
 def wait_image_loaded():
@@ -387,7 +389,7 @@ def wait_image_loaded():
             break
 
 
-def save_and_send(web, save):
+def save_and_send(web, ecp, save):
     print('Saving and Sending')
     if save:
         web.execute_script_click_xpath("//span[text() = 'Сохранить']")
@@ -400,6 +402,35 @@ def save_and_send(web, save):
     print('Clicked Send')
     web.wait_element("//input[@value = 'Персональный компьютер']", timeout=30)
     web.execute_script_click_xpath("//input[@value = 'Персональный компьютер']")
+
+    sign_ecp(ecp)
+
+    if web.wait_element("//h1[contains(text(), 'Whitelabel')]", timeout=5):
+        for _ in range(10):
+            try:
+                web.execute_script_click_xpath("//span[text() = 'Сохранить']")
+            except:
+                sleep(60)
+                web.execute_script_click_xpath("//span[text() = 'Сохранить']")
+            sleep(1)
+            if web.wait_element("//span[text() = 'Сохранить отчет и Удалить другие']", timeout=30):
+                web.execute_script_click_xpath("//span[text() = 'Сохранить отчет и Удалить другие']")
+            web.execute_script_click_xpath("//button[@class='btn-savesigned ui-button ui-widget ui-state-default ui-corner-all ui-button-text-icon-primary']/span[text() = 'Отправить']")
+
+            if web.wait_element("//input[@value = 'Персональный компьютер']", timeout=60):
+                web.execute_script_click_xpath("//input[@value = 'Персональный компьютер']")
+            else:
+                web.find_element("//button[@class='btn-savesigned ui-button ui-widget ui-state-default ui-corner-all ui-button-text-icon-primary']/span[text() = 'Отправить']").click()
+                web.wait_element("//input[@value = 'Персональный компьютер']", timeout=120)
+                web.execute_script_click_xpath("//input[@value = 'Персональный компьютер']")
+            print('Checkpoint on signing')
+            sign_ecp(ecp)
+
+            if web.wait_element("//span[text() = 'Продолжить']", timeout=10):
+                web.execute_script_click_xpath("//span[text() = 'Продолжить']")
+
+            if not web.wait_element("//h1[contains(text(), 'Whitelabel')]", timeout=5):
+                break
 
 
 def start_single_branch(filepath, store, values_first_part, values_second_part):
@@ -494,7 +525,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
             for _ in range(3):
 
-                is_loaded = True if len(web.find_elements("//tr[contains(@class, 'x-grid-row')]", timeout=15)) else False
+                is_loaded = True if len(web.find_elements("//div[contains(@class, 'x-grid-row-expander')]", timeout=15)) >= 1 else False
 
                 if is_loaded:
                     if web.wait_element("//div[contains(text(), '2-торговля')]", timeout=3):
@@ -508,6 +539,9 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                         print('Return those shit')
                         return ['Нет 2-т', saved_path, '']
 
+                else:
+                    web.refresh()
+
             if web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=1.5):
                 web.execute_script_click_xpath("//span[contains(text(), 'Пройти позже')]")
             # web.find_element('//*[@id="radio-1133-boxLabelEl"]').click()
@@ -520,7 +554,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
             sleep(1)
 
-            # ? Switch to the second window
+            # ? Switch to the opened tab
             web.driver.switch_to.window(web.driver.window_handles[-1])
 
             web.wait_element('//*[@id="td_select_period_level_1"]/span')
@@ -578,7 +612,11 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
                     # ? Filling second part of the 1st page
                     else:
-                        cur_val = round(round(values_second_part.get(group)) / 1000)
+                        try:
+                            cur_val = round(round(values_second_part.get(group)) / 1)
+                        except:
+                            print('ERROR:', values_second_part.get(group))
+                            cur_val = 10
                         if cur_val < 10:
                             cur_val = 10
                         if cur_val > 9999:
@@ -587,24 +625,24 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                         web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=cur_val)
                 sleep(0.1)
 
-                save_and_send(web, save=False)
+                save_and_send(web, ecp=ecp_sign, save=False)
 
-                sign_ecp(ecp_sign)
+                # sign_ecp(ecp_sign)
                 # sleep(1000)
                 # print(store.replace('Торговый зал', '').replace(' ', '').replace('№', ''))
                 # sleep(30)
 
                 wait_image_loaded()
 
-                web.close()
-                web.quit()
+            web.close()
+            web.quit()
 
-                print('Successed')
+            print('Successed')
 
-                if sites[0] == values_first_part[0] and sites[1] == values_first_part[1] and sites[2] == values_first_part[2]:
-                    return ['success', '', sites]
-                else:
-                    return ['success', 'Были разные данные', sites]
+            if sites[0] == values_first_part[0] and sites[1] == values_first_part[1] and sites[2] == values_first_part[2]:
+                return ['success', '', sites]
+            else:
+                return ['success', 'Были разные данные', sites]
 
             # ? Open new report to fill it
 
@@ -640,8 +678,9 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
                 # ? Filling second part of the 1st page
                 else:
+                    # cur_val = round(values_second_part.get(group))
                     try:
-                        cur_val = round(round(values_second_part.get(group)) / 1000)
+                        cur_val = round(round(values_second_part.get(group)) / 1)
                     except:
                         print('ERROR:', values_second_part.get(group))
                         cur_val = 10
@@ -663,9 +702,9 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_3']", value='KALDYBEK.B@magnum.kz')
             sleep(0)
 
-            save_and_send(web, save=True)
+            save_and_send(web, ecp=ecp_sign, save=True)
 
-            sign_ecp(ecp_sign)
+            # sign_ecp(ecp_sign)
             # sleep(1000)
 
             wait_image_loaded()
@@ -705,8 +744,8 @@ def get_data_from_1157(branch):
 
 if __name__ == '__main__':
 
-    # create_and_send_final_report()
-    # exit()
+    create_and_send_final_report()
+    exit()
 
     # drop_table()
 
@@ -744,7 +783,6 @@ if __name__ == '__main__':
 
             print('MON:', month, months[month - 1])
             while sheet[f'A{counter}'].value is not None:
-
                 store_id = sheet[f'A{counter}'].value
                 store_name = sheet[f'B{counter}'].value
                 first, second, third = sheet[f'{months[month - 1]}{counter}'].value, sheet[f'{months[month - 1]}{counter + 1}'].value, sheet[f'{months[month - 1]}{counter + 2}'].value
@@ -779,27 +817,28 @@ if __name__ == '__main__':
     status = 'success'
 
     # ? Dispatcher
-    # for ind in range(len(df)):
-    #     row = df.iloc[ind]
-    #
-    #     ecp_path = fr"\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{row['name']}"
-    #
-    #     insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=int(row['id']), store_name=row['name'], full_name=row['branch'], executor_name=None, status_='new', error_reason='', error_saved_path='', execution_time='', ecp_path_=ecp_path, fact1=int(row['data'][0]), fact2=int(row['data'][1]), fact3=int(row['data'][2]), site1='', site2='', site3='')
+    if ip_address == '':
+        for ind in range(len(df)):
+            row = df.iloc[ind]
 
-    # if status != 'success':
-    #     all_rows = get_all_data()
-    #
-    #     all_bad_rows = all_rows[all_rows['status'] != 'success']
-    #
-    #     all_bad_rows['store_normal_name'] = None
-    #     all_bad_rows = all_bad_rows.reset_index(inplace=False)
-    #
-    #     for i in range(len(all_bad_rows)):
-    #         all_bad_rows.loc[i, 'store_normal_name'] = df1[df1['store_id'] == all_bad_rows['store_id'].iloc[i]]['store_normal_name'].iloc[0]
-    #
-    #     df_prev = df.copy()
-    #     df = all_bad_rows
-    #     df['data'] = df_prev['data']
+            ecp_path = fr"\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{row['name']}"
+
+            insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=int(row['id']), store_name=row['name'], full_name=row['branch'], executor_name=None, status_='new', error_reason='', error_saved_path='', execution_time='', ecp_path_=ecp_path, fact1=int(row['data'][0]), fact2=int(row['data'][1]), fact3=int(row['data'][2]), site1='', site2='', site3='')
+
+    # # if status != 'success':
+    # #     all_rows = get_all_data()
+    # #
+    # #     all_bad_rows = all_rows[all_rows['status'] != 'success']
+    # #
+    # #     all_bad_rows['store_normal_name'] = None
+    # #     all_bad_rows = all_bad_rows.reset_index(inplace=False)
+    # #
+    # #     for i in range(len(all_bad_rows)):
+    # #         all_bad_rows.loc[i, 'store_normal_name'] = df1[df1['store_id'] == all_bad_rows['store_id'].iloc[i]]['store_normal_name'].iloc[0]
+    # #
+    # #     df_prev = df.copy()
+    # #     df = all_bad_rows
+    # #     df['data'] = df_prev['data']
 
     print('Len:', len(df))
     check = False
@@ -815,14 +854,25 @@ if __name__ == '__main__':
     # exit()
     for ind in range(len(df)):
 
+        all_data = get_data_to_execute()
         branch = df['name'].iloc[ind]
         full_name = df['branch'].iloc[ind]
         id_ = df['id'].iloc[ind]
         data = df['data'].iloc[ind]
 
         if branch not in list(all_data['name']):
-            # print('Skipped', branch)
             continue
+
+        # if f"{branch.split()[-2]} {branch.split()[-1]}" == 'КФ №4':
+        #     continue
+
+        # if f"{branch.split()[-2]} {branch.split()[-1]}" not in ['АФ №82']:
+        #     print('EXEC1:', f"{branch.split()[-2]} {branch.split()[-1]}")
+        #     continue
+        # print(f"EXECUTING: {branch.split()[-2]} {branch.split()[-1]}")
+
+        c += 1
+        # continue
         # if 'АСФ №24' not in branch:
         #     continue
         a.update([branch])
@@ -854,9 +904,9 @@ if __name__ == '__main__':
                 # print(df[df['name'] == branch])
                 logger.info(df[df['name'] == branch]['data'].iloc[0])
                 logger.info(dick)
-                continue
-                # send_message_to_tg(tg_token, chat_id, f"Филиал, {df[df['name'] == branch]['name'].iloc[0]}")
-                # send_message_to_tg(tg_token, chat_id, f"Данные, {df[df['name'] == branch]['data'].iloc[0]}")
+                # continue
+                send_message_to_tg(tg_token, chat_id, f"Филиал, {df[df['name'] == branch]['name'].iloc[0]}")
+                send_message_to_tg(tg_token, chat_id, f"Данные, {df[df['name'] == branch]['data'].iloc[0]}")
                 facts = df[df['name'] == branch]['data'].iloc[0]
                 if True:
                     insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=id_, store_name=branch, full_name=full_name,
@@ -886,11 +936,11 @@ if __name__ == '__main__':
             #     end_time = time.time()
             #     saved_path = save_screenshot(df['name'].iloc[ind])
             #     insert_data_in_db(started_time=start, store_name=str(branch), status='polomalsya', error_reason=str(ebanko), error_saved_path=saved_path, execution_time=str(end_time - start_time), fact1='', fact2='', fact3='', site1='', site2='', site3='')
-    # print(k)
+    # print(
+    # print(ck)
+    print(c)
     print(a)
     print(len(a))
     # exit()
     create_and_send_final_report()
     send_message_to_tg(tg_token, chat_id, f'Отработка заполнения стат отчёта 2Т Закончена!')
-
-
