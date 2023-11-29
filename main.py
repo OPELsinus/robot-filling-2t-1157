@@ -146,8 +146,9 @@ def get_data_to_execute():
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
     table_create_query = f'''
             SELECT * FROM ROBOT.{robot_name.replace("-", "_")}
-            where (status = 'new')
-            and (executor_name is NULL or executor_name = '{ip_address}')
+            where (status = 'new' and (executor_name is NULL or executor_name = '{ip_address}'))
+            --or (status = 'failed' and (executor_name is NULL or executor_name = '{ip_address}'))
+            or (status = 'processing')
             order by started_time desc
             '''
     cur = conn.cursor()
@@ -157,6 +158,9 @@ def get_data_to_execute():
 
     with suppress(Exception):
         df1.columns = ['started_time', 'ended_time', 'store_id', 'name', 'full_name', 'executor_name', 'status', 'error_reason', 'error_saved_path', 'execution_time', 'ecp_path', 'fact1', 'fact2', 'fact3', 'site1', 'site2', 'site3']
+
+    for ind1 in range(len(df1)):
+        df1.loc[ind1, 'name'] = str(df1['name'].iloc[ind1]).replace('_ОПТ', '')
 
     cur.close()
     conn.close()
@@ -433,21 +437,34 @@ def save_and_send(web, ecp, save):
                 break
 
 
+def proverka_ecp(web):
+
+    if web.wait_element('//*[@id="AgreeId_header_hd-textEl"]', timeout=.5):
+        web.execute_script_click_xpath("//span[text() = 'Согласен']")
+
+
 def start_single_branch(filepath, store, values_first_part, values_second_part):
+
     print('Started web')
 
-    if any(val < 0 for val in values_first_part):
+    if any(val < 0 for val in values_first_part if val is not None):
         return ['failed', 'Отрицательная сумма в первой части 2Т', [None, None, None]]
 
     web = Web()
     web.run()
     web.get('https://cabinet.stat.gov.kz/')
     logger.info('Check-1')
+
+
+    proverka_ecp(web=web)
+
     web.wait_element('//*[@id="idLogin"]')
     web.find_element('//*[@id="idLogin"]').click()
 
-    web.wait_element('//*[@id="button-1077-btnEl"]')
-    web.find_element('//*[@id="button-1077-btnEl"]').click()
+    proverka_ecp(web=web)
+
+    # web.wait_element('//*[@id="button-1077-btnEl"]')
+    # web.find_element('//*[@id="button-1077-btnEl"]').click()
 
     web.wait_element('//*[@id="lawAlertCheck"]')
     web.find_element('//*[@id="lawAlertCheck"]').click()
@@ -483,14 +500,24 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                 sleep(0.3)
                 web.find_element('//*[@id="saveId-btnIconEl"]').click()
                 sleep(1)
-                web.find_element('//*[@id="ext-gen1893"]').click()
-                web.find_element('//*[@id="boundlist-1327-listEl"]/ul/li').click()
 
-                sleep(1)
-                web.find_element('//*[@id="button-1326-btnIconEl"]').click()
+                # * --- Deprecated (maybe useful)
+                # web.find_element('//*[@id="ext-gen1893"]').click()
+                # web.find_element('//*[@id="boundlist-1327-listEl"]/ul/li').click()
+                # * ---
+
+                web.wait_element('//*[@id="keyCombo-inputEl"]')
+
+                web.execute_script_click_xpath("//*[@id='keyCombo-inputEl']/../following-sibling::td//div")
+
+                web.find_element("//li[contains(text(), 'Персональный компьютер')]").click()
+                sleep(1.5)
+
+                web.execute_script_click_xpath("//span[contains(text(), 'Продолжить')]")
+
                 print('Done lol')
                 sign_ecp(ecp_sign)
-
+                print()
                 try:
                     web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5)
                     web.find_element("//span[contains(text(), 'Пройти позже')]").click()
@@ -498,12 +525,13 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                 except:
                     pass
             logger.info('Check1')
-            web.wait_element('//*[@id="tab-1168-btnInnerEl"]')
-            web.find_element('//*[@id="tab-1168-btnInnerEl"]').click()
+
+            web.wait_element("//span[contains(text(), 'Мои отчёты')]")
+            web.execute_script_click_xpath("//span[contains(text(), 'Мои отчёты')]")
 
             # sleep(0.7)
 
-            web.wait_element('//*[@id="radio-1131-boxLabelEl"]')
+            # web.wait_element('//*[@id="radio-1131-boxLabelEl"]')
 
             if web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=1.5):
                 web.execute_script_click_xpath("//span[contains(text(), 'Пройти позже')]")
@@ -570,79 +598,79 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
                 print('Return that shit')
                 return ['Выскочила херня', saved_path, '']
-            logger.info('Check3')
+
             web.wait_element('//*[@id="sel_statcode_accord"]/div/p/b[1]', timeout=100)
             web.execute_script_click_js("body > div:nth-child(16) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1) > span")
             # sleep(10900)
             web.wait_element('//*[@id="sel_rep_accord"]/h3[1]/a')
-            logger.info('Check999')
+
             sites = []
             # # ? Send already filled forms
             # # ? Uncomment it if you want to update last saved form
-            if web.wait_element('//*[@id="sel_rep_accord"]/h3[2]/a', timeout=5):
-                web.execute_script_click_xpath("//*[@id='sel_rep_accord']/h3[2]/a")
-                print('Clicking')
-                web.execute_script_click_js("body > div:nth-child(18) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1)")
-
-                web.wait_element("//a[contains(text(), 'Страница 1')]", timeout=120)
-
-                sleep(.5)
-                logger.info(values_first_part)
-                for ind, group in enumerate(groups):
-
-                    if group == 'Объем розничной торговли':
-                        try:
-                            sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
-                        except:
-                            sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
-                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[0]))
-
-                        try:
-                            sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title")))
-                        except:
-                            sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title"))
-                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(values_first_part[1]))
-
-                    elif group == 'Товарные запасы на конец отчетного месяца':
-                        try:
-                            sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
-                        except:
-                            sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
-                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[2]))
-
-                    # ? Filling second part of the 1st page
-                    else:
-                        try:
-                            cur_val = round(round(values_second_part.get(group)) / 1)
-                        except:
-                            print('ERROR:', values_second_part.get(group))
-                            cur_val = 10
-                        if cur_val < 10:
-                            cur_val = 10
-                        if cur_val > 9999:
-                            cur_val = 9999
-                        logger.info(f'cur_val: {cur_val}')
-                        web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=cur_val)
-                sleep(0.1)
-
-                save_and_send(web, ecp=ecp_sign, save=False)
-
-                # sign_ecp(ecp_sign)
-                # sleep(1000)
-                # print(store.replace('Торговый зал', '').replace(' ', '').replace('№', ''))
-                # sleep(30)
-
-                wait_image_loaded()
-
-            web.close()
-            web.quit()
-
-            print('Successed')
-
-            if sites[0] == values_first_part[0] and sites[1] == values_first_part[1] and sites[2] == values_first_part[2]:
-                return ['success', '', sites]
-            else:
-                return ['success', 'Были разные данные', sites]
+            # if web.wait_element('//*[@id="sel_rep_accord"]/h3[2]/a', timeout=5):
+            #     web.execute_script_click_xpath("//*[@id='sel_rep_accord']/h3[2]/a")
+            #     print('Clicking')
+            #     web.execute_script_click_js("body > div:nth-child(18) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1)")
+            #
+            #     web.wait_element("//a[contains(text(), 'Страница 1')]", timeout=120)
+            #
+            #     sleep(.5)
+            #     logger.info(values_first_part)
+            #     for ind, group in enumerate(groups):
+            #
+            #         if group == 'Объем розничной торговли':
+            #             try:
+            #                 sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
+            #             except:
+            #                 sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
+            #             web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[0]))
+            #
+            #             try:
+            #                 sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title")))
+            #             except:
+            #                 sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title"))
+            #             web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(values_first_part[1]))
+            #
+            #         elif group == 'Товарные запасы на конец отчетного месяца':
+            #             try:
+            #                 sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
+            #             except:
+            #                 sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
+            #             web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[2]))
+            #
+            #         # ? Filling second part of the 1st page
+            #         else:
+            #             try:
+            #                 cur_val = round(round(values_second_part.get(group)) / 1)
+            #             except:
+            #                 print('ERROR:', values_second_part.get(group))
+            #                 cur_val = 10
+            #             if cur_val < 10:
+            #                 cur_val = 10
+            #             if cur_val > 9999:
+            #                 cur_val = 9999
+            #             logger.info(f'cur_val: {cur_val}')
+            #             web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=cur_val)
+            #     sleep(0.1)
+            #
+            #     save_and_send(web, ecp=ecp_sign, save=False)
+            #
+            #     # sign_ecp(ecp_sign)
+            #     # sleep(1000)
+            #     # print(store.replace('Торговый зал', '').replace(' ', '').replace('№', ''))
+            #     # sleep(30)
+            #
+            #     wait_image_loaded()
+            #
+            # web.close()
+            # web.quit()
+            #
+            # print('Successed')
+            #
+            # if sites[0] == values_first_part[0] and sites[1] == values_first_part[1] and sites[2] == values_first_part[2]:
+            #     return ['success', '', sites]
+            # else:
+            #     return ['success', 'Были разные данные', sites]
 
             # ? Open new report to fill it
 
@@ -661,20 +689,23 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                         sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
                     except:
                         sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
-                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[0]))
+                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]",
+                                       value=str(values_first_part[0]) if values_first_part[0] is not None else '0')
 
                     try:
                         sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title")))
                     except:
                         sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]").get_attr("title"))
-                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=str(values_first_part[1]))
+                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]",
+                                       value=str(values_first_part[1]) if values_first_part[1] is not None else '0')
 
                 elif group == 'Товарные запасы на конец отчетного месяца':
                     try:
                         sites.append(int(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title")))
                     except:
                         sites.append(web.find_element(f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]").get_attr("title"))
-                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]", value=str(values_first_part[2]))
+                    web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][1]",
+                                       value=str(values_first_part[2]) if values_first_part[2] is not None else '0')
 
                 # ? Filling second part of the 1st page
                 else:
@@ -692,8 +723,6 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                     web.execute_script(xpath=f"//*[contains(text(), '{group}')]/following-sibling::*[contains(@role, 'gridcell')][2]", value=cur_val)
 
             sleep(0.1)
-            logger.info('Check4')
-
             # ? Second page
             web.find_element("//a[contains(text(), 'Данные исполнителя')]").click()
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_0']", value='Қалдыбек Б.Ғ.')
@@ -742,10 +771,61 @@ def get_data_from_1157(branch):
             return pd.read_excel(os.path.join(r'\\172.16.8.87\d\.rpa\.agent\robot-1157-DWH\Output\Splitted', file), header=0)
 
 
+def is_today_start():
+
+    calendar = pd.read_excel(fr'\\vault.magnum.local\Common\Stuff\_05_Финансовый Департамент\01. Казначейство\Сверка\Сверка РОБОТ\Шаблоны для робота (не удалять)\Производственный календарь 2023.xlsx')
+
+    today_ = datetime.datetime.now().strftime('%d.%m.%y')
+
+    cur_day_index = calendar[calendar['Day'] == today_]['Type'].index[0]
+    cur_day_type = calendar[calendar['Day'] == today_]['Type'].iloc[0]
+
+    count = 0
+    day_ = None
+    found = False
+
+    for i in range(1, 31):
+
+        try:
+            day = int(calendar['Day'].iloc[cur_day_index + i].split('.')[0])
+            print(calendar['Day'].iloc[cur_day_index + i], calendar['Weekday'].iloc[cur_day_index + i], calendar['Type'].iloc[cur_day_index + i])
+
+        except:
+            day = 1
+
+        if day == 1:
+
+            for j in range(1, 6):
+                print(cur_day_index, i, j, cur_day_index + i - j)
+
+                print('---', calendar['Day'].iloc[cur_day_index + i - j], calendar['Weekday'].iloc[cur_day_index + i - j], calendar['Type'].iloc[cur_day_index + i - j])
+
+                if calendar['Type'].iloc[cur_day_index + i - j] == 'Working':
+                    count += 1
+                if count == 3:
+                    found = True
+                    day_ = calendar['Day'].iloc[cur_day_index + i - j]
+                    break
+        if found:
+            break
+
+    print(cur_day_index, cur_day_type)
+
+    print(day_)
+
+    if today_ == day_:  # * datetime.datetime.today().strftime('%d.%m.%y') == day_:
+        return True
+    else:
+        return False
+
+
 if __name__ == '__main__':
 
-    create_and_send_final_report()
-    exit()
+    if not is_today_start():
+        logger.info(f'Not working day - {datetime.date.today()}')
+        # exit()
+    # create_and_send_final_report()
+    # exit()
 
     # drop_table()
 
@@ -814,16 +894,21 @@ if __name__ == '__main__':
 
     # ? Execute only rows with exact status
 
-    status = 'success'
+    # status = 'success'
 
     # ? Dispatcher
-    if ip_address == '':
-        for ind in range(len(df)):
-            row = df.iloc[ind]
-
-            ecp_path = fr"\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{row['name']}"
-
-            insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=int(row['id']), store_name=row['name'], full_name=row['branch'], executor_name=None, status_='new', error_reason='', error_saved_path='', execution_time='', ecp_path_=ecp_path, fact1=int(row['data'][0]), fact2=int(row['data'][1]), fact3=int(row['data'][2]), site1='', site2='', site3='')
+    # if ip_address == '172.20.1.24':
+    #     for ind in range(len(df)):
+    #         row = df.iloc[ind]
+    #
+    #         ecp_path = fr"\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{row['name']}"
+    #         # print(row)
+    #
+    #         first_int = int(row['data'][0]) if row['data'][0] is not None else 0
+    #         second_int = int(row['data'][1]) if row['data'][1] is not None else 0
+    #         third_int = int(row['data'][2]) if row['data'][2] is not None else 0
+    #
+    #         insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=int(row['id']), store_name=row['name'], full_name=row['branch'], executor_name=None, status_='new', error_reason='', error_saved_path='', execution_time='', ecp_path_=ecp_path, fact1=first_int, fact2=second_int, fact3=third_int, site1='', site2='', site3='')
 
     # # if status != 'success':
     # #     all_rows = get_all_data()
@@ -852,6 +937,7 @@ if __name__ == '__main__':
     a = set()
     # create_and_send_final_report()
     # exit()
+    status = None
     for ind in range(len(df)):
 
         all_data = get_data_to_execute()
@@ -860,8 +946,15 @@ if __name__ == '__main__':
         id_ = df['id'].iloc[ind]
         data = df['data'].iloc[ind]
 
-        if branch not in list(all_data['name']):
+        data_to_execute = list(all_data['name'])
+        branch_in_1157 = branch
+        # print(branch.replace('_ОПТ', ''), '|', data_to_execute)
+        if branch.replace('_ОПТ', '') not in data_to_execute:
             continue
+
+        if branch == 'Торговый зал СТМ 1АФ':
+            branch = 'РЦ DAMU Алматы'
+            branch_in_1157 = 'РЦ №3 филиал в г.Алматы'
 
         # if f"{branch.split()[-2]} {branch.split()[-1]}" == 'КФ №4':
         #     continue
@@ -877,12 +970,13 @@ if __name__ == '__main__':
         #     continue
         a.update([branch])
         # continue
-        ecp_path = fr'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{branch}'
-
+        ecp_path = fr'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{branch.replace("_ОПТ", "")}'
+        print('KEKUSSSSSSSSSSSSSSSSS', os.path.exists(ecp_path), os.path.isdir(ecp_path), os.path.exists(ecp_path) and os.path.isdir(ecp_path))
         if os.path.exists(ecp_path) and os.path.isdir(ecp_path):
+            print('-fsd-fsd-f-dsf-HERE--------------')
             start = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")
             start_time = time.time()
-            if True:
+            try:
                 print('Started', ind, branch)
                 # send_message_to_tg(tg_token, chat_id, f'Начал, {ind}, {branch}')
 
@@ -908,35 +1002,42 @@ if __name__ == '__main__':
                 send_message_to_tg(tg_token, chat_id, f"Филиал, {df[df['name'] == branch]['name'].iloc[0]}")
                 send_message_to_tg(tg_token, chat_id, f"Данные, {df[df['name'] == branch]['data'].iloc[0]}")
                 facts = df[df['name'] == branch]['data'].iloc[0]
-                if True:
+
+                first_val = int(data[0]) if data[0] is not None else 0
+                second_val = int(data[1]) if data[1] is not None else 0
+                third_val = int(data[2]) if data[2] is not None else 0
+
+                try:
                     insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=id_, store_name=branch, full_name=full_name,
-                                      executor_name=ip_address, status_='processing', error_reason='', error_saved_path='', execution_time='', ecp_path_=ecp_path, fact1=int(data[0]), fact2=int(data[1]), fact3=int(data[2]), site1='', site2='', site3='')
+                                      executor_name=ip_address, status_='processing', error_reason='', error_saved_path='', execution_time='', ecp_path_=ecp_path, fact1=first_val, fact2=second_val, fact3=third_val, site1='', site2='', site3='')
 
                     status, saved_path, sites = start_single_branch(ecp_path, branch, facts, dick)
                     if sites == '':
                         sites = [''] * 3
-                # except Exception as poebotnya:
-                #     end_time = time.time()
-                #     insert_data_in_db(started_time=start, store_name=str(branch), status='poebotnya', error_reason=poebotnya, error_saved_path='', execution_time=str(end_time - start_time), fact1=facts[0], fact2=facts[1], fact3=facts[2], site1='', site2='', site3='')
-                #     continue
+                except Exception as poebotnya:
+                    end_time = time.time()
+                    insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=id_, store_name=branch, full_name=full_name,
+                                      executor_name=ip_address, status_='slomalsya', error_reason=status, error_saved_path='', execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=None, fact2=None, fact3=None, site1=None, site2=None, site3=None)
+                    continue
 
                 end_time = time.time()
                 if status != 'success':
                     insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=id_, store_name=branch, full_name=full_name,
-                                      executor_name=ip_address, status_='failed', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=int(data[0]), fact2=int(data[1]), fact3=int(data[2]), site1=sites[0], site2=sites[1], site3=sites[2])
+                                      executor_name=ip_address, status_='failed', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=first_val, fact2=second_val, fact3=third_val, site1=sites[0], site2=sites[1], site3=sites[2])
                     # insert_data_in_db(started_time=start, store_name=str(branch), executor_name=ip_address, status_='failed', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=facts[0], fact2=facts[1], fact3=facts[2], site1=sites[0], site2=sites[1], site3=sites[2])
                 else:
                     insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=id_, store_name=branch, full_name=full_name,
-                                      executor_name=ip_address, status_='success', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=int(data[0]), fact2=int(data[1]), fact3=int(data[2]), site1=sites[0], site2=sites[1], site3=sites[2])
+                                      executor_name=ip_address, status_='success', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=first_val, fact2=second_val, fact3=third_val, site1=sites[0], site2=sites[1], site3=sites[2])
 
                 # send_message_to_tg(tg_token, chat_id, f'Finished, {ind}, {branch}')
 
-            # except Exception as ebanko:
-            #     send_message_to_tg(tg_token, chat_id, f'Fucking error occured: {ebanko}')
-            #     end_time = time.time()
-            #     saved_path = save_screenshot(df['name'].iloc[ind])
-            #     insert_data_in_db(started_time=start, store_name=str(branch), status='polomalsya', error_reason=str(ebanko), error_saved_path=saved_path, execution_time=str(end_time - start_time), fact1='', fact2='', fact3='', site1='', site2='', site3='')
-    # print(
+            except Exception as ebanko:
+                send_message_to_tg(tg_token, chat_id, f'Fucking error occured: {ebanko}')
+                end_time = time.time()
+                saved_path = save_screenshot(df['name'].iloc[ind])
+                insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=id_, store_name=branch, full_name=full_name,
+                                  executor_name=ip_address, status_='slomalsya', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=None, fact2=None, fact3=None, site1=None, site2=None, site3=None)
+
     # print(ck)
     print(c)
     print(a)
