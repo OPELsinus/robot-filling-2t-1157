@@ -63,12 +63,15 @@ file_handler.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.setLevel(logging.DEBUG)
 
-config_path = local_path.joinpath(f'.agent\\{robot_name}\\config.json')
+config_path = global_path.joinpath(f'.agent\\{robot_name}\\config.json')
 config_data = json_read(config_path)
 download_path = Path.home().joinpath('downloads')
 working_path = root_path.joinpath('working_path')
 working_path.mkdir(exist_ok=True, parents=True)
 chat_id = config_data['chat_id']
+production_calendar = config_data['production_calendar']
+template_path = config_data['template_path']
+main_executor = config_data['main_executor']
 
 ip_address = socket.gethostbyname(socket.gethostname())
 

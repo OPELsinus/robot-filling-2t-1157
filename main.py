@@ -17,7 +17,7 @@ import psycopg2 as psycopg2
 from openpyxl import load_workbook
 from pywinauto import keyboard
 
-from config import logger, robot_name, db_host, db_port, db_name, db_user, db_pass, owa_username, owa_password, working_path, download_path, tg_token, chat_id, ip_address, saving_path
+from config import logger, robot_name, db_host, db_port, db_name, db_user, db_pass, owa_username, owa_password, working_path, download_path, tg_token, chat_id, ip_address, saving_path, production_calendar, template_path, main_executor
 from rpamini import Web, App
 from tools import update_credentials, send_message_to_tg, send_file_to_tg
 from pyautogui import screenshot
@@ -49,7 +49,7 @@ groups = ['Объем розничной торговли',
           'Соль']
 
 
-def drop_table():
+def sql_drop_table():
     conn = psycopg2.connect(host=db_host, port=db_port, database=db_name, user=db_user, password=db_pass)
     table_create_query = f'''
             drop table robot.{robot_name.replace("-", "_")}
@@ -148,7 +148,7 @@ def get_data_to_execute():
             SELECT * FROM ROBOT.{robot_name.replace("-", "_")}
             where (status = 'new' and (executor_name is NULL or executor_name = '{ip_address}'))
             --or (status = 'failed' and (executor_name is NULL or executor_name = '{ip_address}'))
-            or (status = 'processing')
+            or (status = 'processing' and (executor_name is NULL or executor_name = '{ip_address}'))
             order by started_time desc
             '''
     cur = conn.cursor()
@@ -382,15 +382,20 @@ def create_and_send_final_report():
 
 def wait_image_loaded():
     found = False
-    while True:
+    for i in range(230):
         for file in os.listdir(download_path):
-            if '.jpg' in file and 'crdownload' not in file:
+            if '.jpg' in file and 'crdownload' not in file and (time.time() - os.path.getctime(os.path.join(download_path, file))) <= 100:
                 shutil.move(os.path.join(download_path, file), os.path.join(os.path.join(saving_path, 'Отчёты 2т'), branch + '.jpg'))
                 print(file)
+                print(os.path.join(os.path.join(saving_path, 'Отчёты 2т'), branch + '.jpg'))
+                print('---')
                 found = True
                 break
         if found:
             break
+        sleep(1)
+
+    return found
 
 
 def save_and_send(web, ecp, save):
@@ -454,7 +459,6 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
     web.run()
     web.get('https://cabinet.stat.gov.kz/')
     logger.info('Check-1')
-
 
     proverka_ecp(web=web)
 
@@ -731,24 +735,28 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_3']", value='KALDYBEK.B@magnum.kz')
             sleep(0)
 
-            save_and_send(web, ecp=ecp_sign, save=True)
+            for tries in range(100):
 
-            # sign_ecp(ecp_sign)
-            # sleep(1000)
+                save_and_send(web, ecp=ecp_sign, save=True)
 
-            wait_image_loaded()
+                # sign_ecp(ecp_sign)
+                # sleep(1000)
 
-            web.close()
-            web.quit()
+                found = wait_image_loaded()
 
-            print('Successed')
+                if found:
 
-            if sites[0] == values_first_part[0] and sites[1] == values_first_part[1] and sites[2] == values_first_part[2]:
-                return ['success', '', sites]
-            else:
-                return ['success', 'Были разные данные, робот изменил', sites]
+                    web.close()
+                    web.quit()
 
-            # return ['success', '', sites]
+                    print('Successed')
+
+                    if sites[0] == values_first_part[0] and sites[1] == values_first_part[1] and sites[2] == values_first_part[2]:
+                        return ['success', '', sites]
+                    else:
+                        return ['success', 'Были разные данные, робот изменил', sites]
+
+                # return ['success', '', sites]
 
     else:
 
@@ -773,7 +781,9 @@ def get_data_from_1157(branch):
 
 def is_today_start():
 
-    calendar = pd.read_excel(fr'\\vault.magnum.local\Common\Stuff\_05_Финансовый Департамент\01. Казначейство\Сверка\Сверка РОБОТ\Шаблоны для робота (не удалять)\Производственный календарь 2023.xlsx')
+    update_credentials(template_path, owa_username, owa_password)
+
+    calendar = pd.read_excel(production_calendar)
 
     today_ = datetime.datetime.now().strftime('%d.%m.%y')
 
@@ -897,42 +907,44 @@ if __name__ == '__main__':
     # status = 'success'
 
     # ? Dispatcher
-    # if ip_address == '172.20.1.24':
-    #     for ind in range(len(df)):
-    #         row = df.iloc[ind]
-    #
-    #         ecp_path = fr"\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{row['name']}"
-    #         # print(row)
-    #
-    #         first_int = int(row['data'][0]) if row['data'][0] is not None else 0
-    #         second_int = int(row['data'][1]) if row['data'][1] is not None else 0
-    #         third_int = int(row['data'][2]) if row['data'][2] is not None else 0
-    #
-    #         insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=int(row['id']), store_name=row['name'], full_name=row['branch'], executor_name=None, status_='new', error_reason='', error_saved_path='', execution_time='', ecp_path_=ecp_path, fact1=first_int, fact2=second_int, fact3=third_int, site1='', site2='', site3='')
+    if ip_address == main_executor:
 
-    # # if status != 'success':
-    # #     all_rows = get_all_data()
-    # #
-    # #     all_bad_rows = all_rows[all_rows['status'] != 'success']
-    # #
-    # #     all_bad_rows['store_normal_name'] = None
-    # #     all_bad_rows = all_bad_rows.reset_index(inplace=False)
-    # #
-    # #     for i in range(len(all_bad_rows)):
-    # #         all_bad_rows.loc[i, 'store_normal_name'] = df1[df1['store_id'] == all_bad_rows['store_id'].iloc[i]]['store_normal_name'].iloc[0]
-    # #
-    # #     df_prev = df.copy()
-    # #     df = all_bad_rows
-    # #     df['data'] = df_prev['data']
+        sql_drop_table()
+
+        sql_create_table()
+
+        for ind in range(len(df)):
+            row = df.iloc[ind]
+
+            ecp_path = fr"\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{row['name']}"
+            # print(row)
+
+            first_int = int(row['data'][0]) if row['data'][0] is not None else 0
+            second_int = int(row['data'][1]) if row['data'][1] is not None else 0
+            third_int = int(row['data'][2]) if row['data'][2] is not None else 0
+
+            insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=int(row['id']), store_name=row['name'], full_name=row['branch'], executor_name=None, status_='new', error_reason='', error_saved_path='', execution_time='', ecp_path_=ecp_path, fact1=first_int, fact2=second_int, fact3=third_int, site1='', site2='', site3='')
+    # exit()
+    # if status != 'success':
+    #     all_rows = get_all_data()
+    #
+    #     all_bad_rows = all_rows[all_rows['status'] != 'success']
+    #
+    #     all_bad_rows['store_normal_name'] = None
+    #     all_bad_rows = all_bad_rows.reset_index(inplace=False)
+    #
+    #     for i in range(len(all_bad_rows)):
+    #         all_bad_rows.loc[i, 'store_normal_name'] = df1[df1['store_id'] == all_bad_rows['store_id'].iloc[i]]['store_normal_name'].iloc[0]
+    #
+    #     df_prev = df.copy()
+    #     df = all_bad_rows
+    #     df['data'] = df_prev['data']
 
     print('Len:', len(df))
     check = False
 
     # ? Performer
 
-    all_data = get_data_to_execute()
-    print(list(all_data['name']))
-    print(len(list(all_data['name'])))
     c = 0
     a = set()
     # create_and_send_final_report()
@@ -946,15 +958,35 @@ if __name__ == '__main__':
         id_ = df['id'].iloc[ind]
         data = df['data'].iloc[ind]
 
+        all_data = get_data_to_execute()
+
         data_to_execute = list(all_data['name'])
+
+        logger.warning(f'Started1 {ind} | {branch}')
+
+        if branch not in data_to_execute:
+            print(f'Skipped {branch}')
+            continue
+
         branch_in_1157 = branch
         # print(branch.replace('_ОПТ', ''), '|', data_to_execute)
-        if branch.replace('_ОПТ', '') not in data_to_execute:
-            continue
+
+        # if branch.replace('_ОПТ', '') not in data_to_execute:
+        #     continue
 
         if branch == 'Торговый зал СТМ 1АФ':
             branch = 'РЦ DAMU Алматы'
             branch_in_1157 = 'РЦ №3 филиал в г.Алматы'
+
+        skipping = False
+
+        for file in os.listdir(os.path.join(saving_path, 'Отчёты 2т')):
+            if branch == file.split('.')[0]:
+                skipping = True
+                break
+
+        if skipping:
+            continue
 
         # if f"{branch.split()[-2]} {branch.split()[-1]}" == 'КФ №4':
         #     continue
@@ -971,13 +1003,14 @@ if __name__ == '__main__':
         a.update([branch])
         # continue
         ecp_path = fr'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{branch.replace("_ОПТ", "")}'
-        print('KEKUSSSSSSSSSSSSSSSSS', os.path.exists(ecp_path), os.path.isdir(ecp_path), os.path.exists(ecp_path) and os.path.isdir(ecp_path))
+        # print('KEKUSSSSSSSSSSSSSSSSS', os.path.exists(ecp_path), os.path.isdir(ecp_path), os.path.exists(ecp_path) and os.path.isdir(ecp_path))
         if os.path.exists(ecp_path) and os.path.isdir(ecp_path):
-            print('-fsd-fsd-f-dsf-HERE--------------')
+
             start = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")
             start_time = time.time()
             try:
                 print('Started', ind, branch)
+                logger.warning(f'Started {ind} | {branch}')
                 # send_message_to_tg(tg_token, chat_id, f'Начал, {ind}, {branch}')
 
                 # ? Get the sum of each subgroup to fill
@@ -1015,9 +1048,11 @@ if __name__ == '__main__':
                     if sites == '':
                         sites = [''] * 3
                 except Exception as poebotnya:
+
+                    logger.warning(f'Fucking error occured1: {poebotnya}')
                     end_time = time.time()
                     insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=id_, store_name=branch, full_name=full_name,
-                                      executor_name=ip_address, status_='slomalsya', error_reason=status, error_saved_path='', execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=None, fact2=None, fact3=None, site1=None, site2=None, site3=None)
+                                      executor_name=ip_address, status_='slomalsya', error_reason=str(poebotnya)[:200], error_saved_path='', execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=None, fact2=None, fact3=None, site1=None, site2=None, site3=None)
                     continue
 
                 end_time = time.time()
@@ -1033,10 +1068,11 @@ if __name__ == '__main__':
 
             except Exception as ebanko:
                 send_message_to_tg(tg_token, chat_id, f'Fucking error occured: {ebanko}')
+                logger.warning(f'Fucking error occured: {ebanko}')
                 end_time = time.time()
                 saved_path = save_screenshot(df['name'].iloc[ind])
                 insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=id_, store_name=branch, full_name=full_name,
-                                  executor_name=ip_address, status_='slomalsya', error_reason=status, error_saved_path=saved_path, execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=None, fact2=None, fact3=None, site1=None, site2=None, site3=None)
+                                  executor_name=ip_address, status_='slomalsya', error_reason=str(ebanko)[:200], error_saved_path=saved_path, execution_time=str(end_time - start_time), ecp_path_=ecp_path, fact1=None, fact2=None, fact3=None, site1=None, site2=None, site3=None)
 
     # print(ck)
     print(c)
