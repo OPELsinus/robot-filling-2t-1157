@@ -528,6 +528,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
                 except:
                     pass
+
             logger.info('Check1')
 
             web.wait_element("//span[contains(text(), 'Мои отчёты')]")
@@ -582,15 +583,34 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
             sleep(0.5)
 
+            # if False:
             web.find_element('//*[@id="createReportId-btnIconEl"]').click()
 
+            # Delete when 2t is okay to save
+            # if True:
+            #     print('Calendar')
+            #     web.find_element('//span[contains(text(), "Календарь")]').click()
+            #     web.wait_element('//div[text() = "2-торговля"]')
+            #
+            #     if web.find_element('//div[text() = "2-торговля"]') and web.find_element('//div[text() = "2-торговля"]/../following-sibling::td[1]/div').get_attr('text') == 'месяц':
+            #         print('Here')
+            #         # web.execute_script_click_xpath('//div[text() = "1-П"]/../following-sibling::td//button/p')
+            #         web.find_element('//div[text() = "2-торговля"]/../following-sibling::td//button').click()
+
             sleep(1)
+
+            with suppress(Exception):
+                web.execute_script_click_xpath("//a//*[text()='Да']")
 
             # ? Switch to the opened tab
             web.driver.switch_to.window(web.driver.window_handles[-1])
 
+            sleep(1)
+
             web.wait_element('//*[@id="td_select_period_level_1"]/span')
-            web.execute_script_click_js("#btn-opendata")
+            # web.execute_script_click_js("#btn-opendata")
+            web.find_element("(//button[contains(@title, 'Открыть')])[1]").click()
+
             sleep(0.3)
 
             if web.lolus('/html/body/div[7]') == 'block':
@@ -603,10 +623,18 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                 print('Return that shit')
                 return ['Выскочила херня', saved_path, '']
 
+            sleep(1.5)
+
             web.wait_element('//*[@id="sel_statcode_accord"]/div/p/b[1]', timeout=100)
+            sleep(1.5)
+
             web.execute_script_click_js("body > div:nth-child(16) > div.ui-dialog-buttonpane.ui-widget-content.ui-helper-clearfix > div > button:nth-child(1) > span")
             # sleep(10900)
+            sleep(1.5)
+
             web.wait_element('//*[@id="sel_rep_accord"]/h3[1]/a')
+
+            sleep(1.5)
 
             sites = []
             # # ? Send already filled forms
@@ -962,6 +990,8 @@ if __name__ == '__main__':
 
         data_to_execute = list(all_data['name'])
 
+        print(data_to_execute)
+
         logger.warning(f'Started1 {ind} | {branch}')
 
         if branch not in data_to_execute:
@@ -998,7 +1028,7 @@ if __name__ == '__main__':
 
         c += 1
         # continue
-        # if 'АСФ №24' not in branch:
+        # if 'АФ №45' in branch:
         #     continue
         a.update([branch])
         # continue
