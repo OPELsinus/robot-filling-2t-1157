@@ -17,7 +17,7 @@ import psycopg2 as psycopg2
 from openpyxl import load_workbook
 from pywinauto import keyboard
 
-from config import logger, robot_name, db_host, db_port, db_name, db_user, db_pass, owa_username, owa_password, working_path, download_path, tg_token, chat_id, ip_address, saving_path, production_calendar, template_path, main_executor
+from config import logger, robot_name, db_host, db_port, db_name, db_user, db_pass, owa_username, owa_password, working_path, download_path, tg_token, chat_id, ip_address, saving_path, production_calendar, template_path, main_executor, executors_excel
 from rpamini import Web, App
 from tools import update_credentials, send_message_to_tg, send_file_to_tg
 from pyautogui import screenshot
@@ -407,40 +407,50 @@ def save_and_send(web, ecp, save):
         if web.wait_element("//span[text() = 'Сохранить отчет и Удалить другие']", timeout=5):
             web.execute_script_click_xpath("//span[text() = 'Сохранить отчет и Удалить другие']")
     print('Clicking Send')
-    web.execute_script_click_xpath("//span[text() = 'Отправить']")
-    print('Clicked Send')
-    web.wait_element("//input[@value = 'Персональный компьютер']", timeout=30)
-    web.execute_script_click_xpath("//input[@value = 'Персональный компьютер']")
 
-    sign_ecp(ecp)
+    errors = web.find_elements('//*[@id="statflc"]//a', timeout=15)
+    errors_count = 0
+    for errorik in errors:
+        # print(f"ERRORS IN STAT: {errorik.get_attr('title').lower()}")
+        if 'допустимый' not in errorik.get_attr('title').lower():
+            errors_count += 1
 
-    if web.wait_element("//h1[contains(text(), 'Whitelabel')]", timeout=5):
-        for _ in range(10):
-            try:
-                web.execute_script_click_xpath("//span[text() = 'Сохранить']")
-            except:
-                sleep(60)
-                web.execute_script_click_xpath("//span[text() = 'Сохранить']")
-            sleep(1)
-            if web.wait_element("//span[text() = 'Сохранить отчет и Удалить другие']", timeout=30):
-                web.execute_script_click_xpath("//span[text() = 'Сохранить отчет и Удалить другие']")
-            web.execute_script_click_xpath("//button[@class='btn-savesigned ui-button ui-widget ui-state-default ui-corner-all ui-button-text-icon-primary']/span[text() = 'Отправить']")
+    if errors_count == 0:
+        web.execute_script_click_xpath("//span[text() = 'Отправить']")
+        print('Clicked Send')
+        web.wait_element("//input[@value = 'Персональный компьютер']", timeout=30)
+        web.execute_script_click_xpath("//input[@value = 'Персональный компьютер']")
 
-            if web.wait_element("//input[@value = 'Персональный компьютер']", timeout=60):
-                web.execute_script_click_xpath("//input[@value = 'Персональный компьютер']")
-            else:
-                web.find_element("//button[@class='btn-savesigned ui-button ui-widget ui-state-default ui-corner-all ui-button-text-icon-primary']/span[text() = 'Отправить']").click()
-                web.wait_element("//input[@value = 'Персональный компьютер']", timeout=120)
-                web.execute_script_click_xpath("//input[@value = 'Персональный компьютер']")
-            print('Checkpoint on signing')
-            sign_ecp(ecp)
+        sign_ecp(ecp)
 
-            if web.wait_element("//span[text() = 'Продолжить']", timeout=10):
-                web.execute_script_click_xpath("//span[text() = 'Продолжить']")
+        if web.wait_element("//h1[contains(text(), 'Whitelabel')]", timeout=5):
+            for _ in range(10):
+                try:
+                    web.execute_script_click_xpath("//span[text() = 'Сохранить']")
+                except:
+                    sleep(60)
+                    web.execute_script_click_xpath("//span[text() = 'Сохранить']")
+                sleep(1)
+                if web.wait_element("//span[text() = 'Сохранить отчет и Удалить другие']", timeout=30):
+                    web.execute_script_click_xpath("//span[text() = 'Сохранить отчет и Удалить другие']")
+                web.execute_script_click_xpath("//button[@class='btn-savesigned ui-button ui-widget ui-state-default ui-corner-all ui-button-text-icon-primary']/span[text() = 'Отправить']")
 
-            if not web.wait_element("//h1[contains(text(), 'Whitelabel')]", timeout=5):
-                break
+                if web.wait_element("//input[@value = 'Персональный компьютер']", timeout=60):
+                    web.execute_script_click_xpath("//input[@value = 'Персональный компьютер']")
+                else:
+                    web.find_element("//button[@class='btn-savesigned ui-button ui-widget ui-state-default ui-corner-all ui-button-text-icon-primary']/span[text() = 'Отправить']").click()
+                    web.wait_element("//input[@value = 'Персональный компьютер']", timeout=120)
+                    web.execute_script_click_xpath("//input[@value = 'Персональный компьютер']")
+                print('Checkpoint on signing')
+                sign_ecp(ecp)
 
+                if web.wait_element("//span[text() = 'Продолжить']", timeout=10):
+                    web.execute_script_click_xpath("//span[text() = 'Продолжить']")
+
+                if not web.wait_element("//h1[contains(text(), 'Whitelabel')]", timeout=5):
+                    break
+    else:
+        logger.info('CRITICAL ERRORS')
 
 def proverka_ecp(web):
 
@@ -521,7 +531,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
                 print('Done lol')
                 sign_ecp(ecp_sign)
-                print()
+
                 try:
                     web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=5)
                     web.find_element("//span[contains(text(), 'Пройти позже')]").click()
@@ -534,14 +544,11 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             web.wait_element("//span[contains(text(), 'Мои отчёты')]")
             web.execute_script_click_xpath("//span[contains(text(), 'Мои отчёты')]")
 
-            # sleep(0.7)
-
-            # web.wait_element('//*[@id="radio-1131-boxLabelEl"]')
-
             if web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=1.5):
                 web.execute_script_click_xpath("//span[contains(text(), 'Пройти позже')]")
             sleep(1)
 
+            # DEPRECATED --------------------------------------------
             # ? Check if 2T exists
             # for i in range(1):
             #
@@ -552,6 +559,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             #     web.find_element("//div[contains(text(), '2-торговля')]").click()
             # else:
             #     if i < 3:
+            # -------------------------------------------------------
 
             if web.wait_element("//span[contains(text(), 'Пройти позже')]", timeout=1.5):
                 web.execute_script_click_xpath("//span[contains(text(), 'Пройти позже')]")
@@ -583,6 +591,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
             sleep(0.5)
 
+            # Нажимаем кнопку Создать отчёт
             # if False:
             web.find_element('//*[@id="createReportId-btnIconEl"]').click()
 
@@ -607,7 +616,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 
             sleep(1)
 
-            web.wait_element('//*[@id="td_select_period_level_1"]/span')
+            web.wait_element('//*[@id="td_select_period_level_1"]/span', timeout=240 )
             # web.execute_script_click_js("#btn-opendata")
             web.find_element("(//button[contains(@title, 'Открыть')])[1]").click()
 
@@ -757,10 +766,24 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
             sleep(0.1)
             # ? Second page
             web.find_element("//a[contains(text(), 'Данные исполнителя')]").click()
-            web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_0']", value='Қалдыбек Б.Ғ.')
-            web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_1']", value='87073332438')
-            web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_2']", value='87073332438')
-            web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_3']", value='KALDYBEK.B@magnum.kz')
+
+            executors = pd.read_excel(executors_excel)
+
+            executor_name = 'Естаева Акбота Канатовна'
+            phone_number = '7273391350'
+            email = 'Yestayeva@magnum.kz'
+
+            store_ = store.replace('Торговый зал', '').replace('№', '').replace(' ', '')
+            if store_ in list(executors['Филиал']):
+                executor_name = str(executors[executors['Филиал'] == store_]['ФИО бухгалтера'].iloc[0])
+                phone_number = str(executors[executors['Филиал'] == store_]['Сотовый телефон'].iloc[0])
+                email = str(executors[executors['Филиал'] == store_]['Электронный адрес'].iloc[0])
+            print(executor_name, phone_number, email)
+
+            web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_0']", value=executor_name)
+            web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_1']", value=phone_number)
+            web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_2']", value=phone_number)
+            web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_3']", value=email)
             sleep(0)
 
             for tries in range(100):
@@ -934,7 +957,7 @@ if __name__ == '__main__':
 
     # status = 'success'
 
-    # ? Dispatcher
+    # ? Dispatcher --------------------------------------------
     if ip_address == main_executor:
 
         sql_drop_table()
@@ -952,21 +975,7 @@ if __name__ == '__main__':
             third_int = int(row['data'][2]) if row['data'][2] is not None else 0
 
             insert_data_in_db(started_time=datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"), store_id=int(row['id']), store_name=row['name'], full_name=row['branch'], executor_name=None, status_='new', error_reason='', error_saved_path='', execution_time='', ecp_path_=ecp_path, fact1=first_int, fact2=second_int, fact3=third_int, site1='', site2='', site3='')
-    # exit()
-    # if status != 'success':
-    #     all_rows = get_all_data()
-    #
-    #     all_bad_rows = all_rows[all_rows['status'] != 'success']
-    #
-    #     all_bad_rows['store_normal_name'] = None
-    #     all_bad_rows = all_bad_rows.reset_index(inplace=False)
-    #
-    #     for i in range(len(all_bad_rows)):
-    #         all_bad_rows.loc[i, 'store_normal_name'] = df1[df1['store_id'] == all_bad_rows['store_id'].iloc[i]]['store_normal_name'].iloc[0]
-    #
-    #     df_prev = df.copy()
-    #     df = all_bad_rows
-    #     df['data'] = df_prev['data']
+    # -------------------------------------------------------
 
     print('Len:', len(df))
     check = False
@@ -1018,8 +1027,8 @@ if __name__ == '__main__':
         if skipping:
             continue
 
-        # if f"{branch.split()[-2]} {branch.split()[-1]}" == 'КФ №4':
-        #     continue
+        if f"{branch.split()[-2]} {branch.split()[-1]}" != 'АФ №7':
+            continue
 
         # if f"{branch.split()[-2]} {branch.split()[-1]}" not in ['АФ №82']:
         #     print('EXEC1:', f"{branch.split()[-2]} {branch.split()[-1]}")
@@ -1027,13 +1036,11 @@ if __name__ == '__main__':
         # print(f"EXECUTING: {branch.split()[-2]} {branch.split()[-1]}")
 
         c += 1
-        # continue
-        # if 'АФ №45' in branch:
-        #     continue
+
         a.update([branch])
-        # continue
+
         ecp_path = fr'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{branch.replace("_ОПТ", "")}'
-        # print('KEKUSSSSSSSSSSSSSSSSS', os.path.exists(ecp_path), os.path.isdir(ecp_path), os.path.exists(ecp_path) and os.path.isdir(ecp_path))
+
         if os.path.exists(ecp_path) and os.path.isdir(ecp_path):
 
             start = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f")

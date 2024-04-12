@@ -72,6 +72,7 @@ chat_id = config_data['chat_id']
 production_calendar = config_data['production_calendar']
 template_path = config_data['template_path']
 main_executor = config_data['main_executor']
+executors_excel = config_data['executors_excel']
 
 ip_address = socket.gethostbyname(socket.gethostname())
 
