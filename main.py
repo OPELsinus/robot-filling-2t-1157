@@ -149,7 +149,7 @@ def get_data_to_execute():
             where (status = 'new' and (executor_name is NULL or executor_name = '{ip_address}'))
             --or (status = 'failed' and (executor_name is NULL or executor_name = '{ip_address}'))
             or (status = 'processing' and (executor_name is NULL or executor_name = '{ip_address}'))
-            order by started_time desc
+            order by random()
             '''
     cur = conn.cursor()
     cur.execute(table_create_query)
@@ -778,7 +778,7 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
                 executor_name = str(executors[executors['Филиал'] == store_]['ФИО бухгалтера'].iloc[0])
                 phone_number = str(executors[executors['Филиал'] == store_]['Сотовый телефон'].iloc[0])
                 email = str(executors[executors['Филиал'] == store_]['Электронный адрес'].iloc[0])
-            print(executor_name, phone_number, email)
+            # print(executor_name, phone_number, email)
 
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_0']", value=executor_name)
             web.execute_script(element_type="value", xpath="//*[@id='inpelem_1_1']", value=phone_number)
@@ -823,11 +823,11 @@ def start_single_branch(filepath, store, values_first_part, values_second_part):
 def get_data_from_1157(branch):
     logger.info('----------------------------')
     logger.info(branch)
-    for file in os.listdir(r'\\172.16.8.87\d\.rpa\.agent\robot-1157-DWH\Output\Splitted'):
+    for file in os.listdir(r'\\172.16.8.87\d\.rpa\.agent\robot-1157-DWH\Output\Выгрузка 1157'):
         if branch + '_' in file:
-            logger.info('Read' + os.path.join(r'\\172.16.8.87\d\.rpa\.agent\robot-1157-DWH\Output\Splitted', file))
+            logger.info('Read' + os.path.join(r'\\172.16.8.87\d\.rpa\.agent\robot-1157-DWH\Output\Выгрузка 1157', file))
             logger.info('----------------------------')
-            return pd.read_excel(os.path.join(r'\\172.16.8.87\d\.rpa\.agent\robot-1157-DWH\Output\Splitted', file), header=0)
+            return pd.read_excel(os.path.join(r'\\172.16.8.87\d\.rpa\.agent\robot-1157-DWH\Output\Выгрузка 1157', file), header=0)
 
 
 def is_today_start():
@@ -965,6 +965,7 @@ if __name__ == '__main__':
         sql_create_table()
 
         for ind in range(len(df)):
+
             row = df.iloc[ind]
 
             ecp_path = fr"\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{row['name']}"
@@ -978,6 +979,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------
 
     print('Len:', len(df))
+
     check = False
 
     # ? Performer
@@ -990,6 +992,7 @@ if __name__ == '__main__':
     for ind in range(len(df)):
 
         all_data = get_data_to_execute()
+
         branch = df['name'].iloc[ind]
         full_name = df['branch'].iloc[ind]
         id_ = df['id'].iloc[ind]
@@ -999,7 +1002,7 @@ if __name__ == '__main__':
 
         data_to_execute = list(all_data['name'])
 
-        print(data_to_execute)
+        print('EXECUTE:', data_to_execute)
 
         logger.warning(f'Started1 {ind} | {branch}')
 
@@ -1027,8 +1030,8 @@ if __name__ == '__main__':
         if skipping:
             continue
 
-        if f"{branch.split()[-2]} {branch.split()[-1]}" != 'АФ №7':
-            continue
+        # if f"{branch.split()[-2]} {branch.split()[-1]}" != 'АФ №1':
+        #     continue
 
         # if f"{branch.split()[-2]} {branch.split()[-1]}" not in ['АФ №82']:
         #     print('EXEC1:', f"{branch.split()[-2]} {branch.split()[-1]}")
