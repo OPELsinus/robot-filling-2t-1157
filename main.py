@@ -17,7 +17,7 @@ import psycopg2 as psycopg2
 from openpyxl import load_workbook
 from pywinauto import keyboard
 
-from config import logger, robot_name, db_host, db_port, db_name, db_user, db_pass, owa_username, owa_password, working_path, download_path, tg_token, chat_id, ip_address, saving_path, production_calendar, template_path, main_executor, executors_excel
+from config import logger, robot_name, db_host, db_port, db_name, db_user, db_pass, owa_username, owa_password, working_path, download_path, tg_token, chat_id, ip_address, saving_path, production_calendar, template_path, main_executor, executors_excel, bad_ecps
 from rpamini import Web, App
 from tools import update_credentials, send_message_to_tg, send_file_to_tg
 from pyautogui import screenshot
@@ -1041,8 +1041,10 @@ if __name__ == '__main__':
         c += 1
 
         a.update([branch])
-
-        ecp_path = fr'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{branch.replace("_ОПТ", "")}'
+        if branch in bad_ecps:
+            ecp_path = fr'\\172.16.8.87\d\ЭЦП ключи (не удалять)\{branch.replace("_ОПТ", "")}'
+        else:
+            ecp_path = fr'\\vault.magnum.local\common\Stuff\_06_Бухгалтерия\! Актуальные ЭЦП\{branch.replace("_ОПТ", "")}'
 
         if os.path.exists(ecp_path) and os.path.isdir(ecp_path):
 
